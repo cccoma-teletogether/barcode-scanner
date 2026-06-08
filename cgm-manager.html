@@ -1254,6 +1254,7 @@
       const centerCrop = cropCanvas(baseCanvas, 'center');
       const boxCrop = cropCanvas(baseCanvas, 'box-band-tight');
       const dexcomWideCrop = cropCanvas(baseCanvas, 'dexcom-band');
+      const screenShotCrop = cropCanvas(baseCanvas, 'screen-code');
       const profile = getScanProfile(typeId, baseCanvas);
 
       const centeredAttempts = [
@@ -1269,6 +1270,11 @@
         ['original-threshold', createProcessedCanvas(baseCanvas, 'threshold')]
       ];
       const dexcomAttempts = [
+        ['screen-code', screenShotCrop],
+        ['screen-code-gray', createProcessedCanvas(screenShotCrop, 'gray')],
+        ['screen-code-threshold2', createProcessedCanvas(screenShotCrop, 'threshold2')],
+        ['screen-code-adaptive', adaptiveThresholdCanvas(screenShotCrop, 10, 10)],
+        ['screen-code-4x', scaleCanvas(screenShotCrop, 4)],
         ['dexcom-band', dexcomWideCrop],
         ['dexcom-band-threshold', createProcessedCanvas(dexcomWideCrop, 'threshold')],
         ['dexcom-band-threshold2', createProcessedCanvas(dexcomWideCrop, 'threshold2')],
@@ -1603,6 +1609,11 @@
         sy = Math.round(h * 0.50);
         sw = Math.round(w * 0.60);
         sh = Math.round(h * 0.36);
+      } else if (region === 'screen-code') {
+        sx = Math.round(w * 0.18);
+        sy = Math.round(h * 0.36);
+        sw = Math.round(w * 0.62);
+        sh = Math.round(h * 0.42);
       }
       canvas.width = Math.max(1, sw);
       canvas.height = Math.max(1, sh);
