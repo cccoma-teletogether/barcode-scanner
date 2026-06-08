@@ -295,6 +295,10 @@
               <span class="badge">DataMatrix</span>
             </div>
             <div class="scanner">
+              <label class="grid" style="gap:6px;">
+                <span class="mini">스캔용 센서 종류 선택</span>
+                <select id="scanTypeSelect"></select>
+              </label>
               <div class="stack">
                 <label class="btn primary" for="scanCaptureInput" style="cursor:pointer;">카메라로 촬영</label>
                 <input id="scanCaptureInput" type="file" accept="image/*" capture="environment" class="hidden" />
@@ -518,6 +522,7 @@
       editingId: document.getElementById('editingId'),
       formSerial: document.getElementById('formSerial'),
       formType: document.getElementById('formType'),
+      scanTypeSelect: document.getElementById('scanTypeSelect'),
       formLot: document.getElementById('formLot'),
       formExpiry: document.getElementById('formExpiry'),
       formOpenedAt: document.getElementById('formOpenedAt'),
@@ -1046,6 +1051,7 @@
       if (raw) els.gs1RawInput.value = raw;
       if (type) els.formType.value = type.id;
       else if (plainSerialOnly) els.formType.value = '';
+      if (els.scanTypeSelect) els.scanTypeSelect.value = els.formType.value || '';
       renderScanGuidance(els.formType.value);
       if (parsed.expiry) els.formExpiry.value = parsed.expiry;
       else if (plainSerialOnly && !type) els.formExpiry.value = '';
@@ -1978,7 +1984,9 @@
     function renderTypeSelects() {
       const opts = state.sensorTypes.map(t => `<option value="${escapeAttr(t.id)}">${escapeHtml(t.name)} · ${t.wearDays}일</option>`).join('');
       els.formType.innerHTML = `<option value="">선택</option>${opts}`;
+      els.scanTypeSelect.innerHTML = `<option value="">자동 감지</option>${opts}`;
       els.filterType.innerHTML = `<option value="">센서 종류 전체</option>${opts}`;
+      els.scanTypeSelect.value = els.formType.value || '';
     }
 
     function renderSettings() {
@@ -2066,6 +2074,7 @@
       els.formExpiry.value = todayISO();
       els.formOpenedAt.value = '';
       els.formType.value = '';
+      if (els.scanTypeSelect) els.scanTypeSelect.value = '';
       renderScanGuidance('');
       els.scanStatus.textContent = '카메라로 찍은 사진이나 이미지 파일을 넣으면 인식합니다.';
       els.scanImagePreview.classList.add('hidden');
@@ -2099,6 +2108,7 @@
       els.formModeBadge.textContent = '수정 모드';
       els.editingId.value = item.id;
       els.formType.value = item.typeId;
+      if (els.scanTypeSelect) els.scanTypeSelect.value = item.typeId || '';
       renderScanGuidance(item.typeId);
       els.formLot.value = item.lot || '';
       els.formExpiry.value = item.expiry || '';
@@ -2190,7 +2200,18 @@
       els.gs1RawInput.value = '';
       setScanStatus('GS1 원문 입력을 지웠습니다.', 'info');
     });
-    els.formType.addEventListener('change', () => renderScanGuidance(els.formType.value));
+    els.formType.addEventListener('change', () => {
+      if (els.scanTypeSelect && els.scanTypeSelect.value !== els.formType.value) {
+        els.scanTypeSelect.value = els.formType.value || '';
+      }
+      renderScanGuidance(els.formType.value);
+    });
+    els.scanTypeSelect.addEventListener('change', () => {
+      if (els.formType.value !== els.scanTypeSelect.value) {
+        els.formType.value = els.scanTypeSelect.value || '';
+      }
+      renderScanGuidance(els.scanTypeSelect.value);
+    });
     els.reloadChangelog.addEventListener('click', loadChangelog);
     els.filterType.addEventListener('change', renderInventory);
     els.filterStatus.addEventListener('change', renderInventory);
@@ -2329,6 +2350,7 @@
 
     function seedFormDefaults() {
       els.formType.value = '';
+      if (els.scanTypeSelect) els.scanTypeSelect.value = '';
       els.formExpiry.value = todayISO();
       renderScanGuidance('');
     }
