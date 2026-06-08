@@ -301,6 +301,10 @@
                 <label class="btn" for="scanImageInput" style="cursor:pointer;">이미지 불러오기</label>
                 <input id="scanImageInput" type="file" accept="image/*" class="hidden" />
               </div>
+              <div class="stack" style="align-items:center;">
+                <span class="badge" id="scanGuideBadge">촬영 가이드</span>
+                <span class="mini" id="scanGuideText">센서 종류를 먼저 선택하면 제품별 촬영 전략을 적용합니다.</span>
+              </div>
               <div class="scan-result" id="scanStatus">카메라로 찍은 사진이나 이미지 파일을 넣으면 인식합니다.</div>
               <img id="scanImagePreview" class="scan-image hidden" alt="scan preview" />
               <div class="mini">인식되면 LOT, 유효기간, 센서 종류, 일련번호를 가능한 범위에서 자동 채웁니다.</div>
@@ -525,6 +529,8 @@
       scanCaptureInput: document.getElementById('scanCaptureInput'),
       scanImageInput: document.getElementById('scanImageInput'),
       scanStatus: document.getElementById('scanStatus'),
+      scanGuideBadge: document.getElementById('scanGuideBadge'),
+      scanGuideText: document.getElementById('scanGuideText'),
       scanImagePreview: document.getElementById('scanImagePreview'),
       gs1RawInput: document.getElementById('gs1RawInput'),
       applyGs1Raw: document.getElementById('applyGs1Raw'),
@@ -819,6 +825,32 @@
         'var(--muted)';
     }
 
+    function getScanGuidance(typeId = '') {
+      const normalized = String(typeId || '').trim();
+      if (normalized === 'dexcom_g7') {
+        return {
+          badge: 'Dexcom 촬영',
+          text: '1x로 박스 라벨 전체가 화면에 크게 들어오게 잡아 주세요. 코드만 2x로 확대하면 인식률이 떨어집니다.'
+        };
+      }
+      if (normalized === 'caresens_air' || normalized === 'barogen_fit') {
+        return {
+          badge: '근접 확대',
+          text: '2x로 DataMatrix를 중앙에 크게 맞춰 주세요. 라벨 전체보다 코드 근접 촬영이 더 잘 읽힙니다.'
+        };
+      }
+      return {
+        badge: '촬영 가이드',
+        text: '센서 종류를 먼저 선택하면 제품별 촬영 전략을 적용합니다. 미선택 시 범용 스캔을 시도합니다.'
+      };
+    }
+
+    function renderScanGuidance(typeId = els.formType?.value || '') {
+      const guide = getScanGuidance(typeId);
+      if (els.scanGuideBadge) els.scanGuideBadge.textContent = guide.badge;
+      if (els.scanGuideText) els.scanGuideText.textContent = guide.text;
+    }
+
     function parseGs1Text(raw) {
       const source = String(raw || '').trim();
       if (!source) return {};
@@ -1014,6 +1046,7 @@
       if (raw) els.gs1RawInput.value = raw;
       if (type) els.formType.value = type.id;
       else if (plainSerialOnly) els.formType.value = '';
+      renderScanGuidance(els.formType.value);
       if (parsed.expiry) els.formExpiry.value = parsed.expiry;
       else if (plainSerialOnly && !type) els.formExpiry.value = '';
       if (parsed.lot) els.formLot.value = parsed.lot;
@@ -1268,9 +1301,9 @@
 
     function getScanProfile(typeId, baseCanvas) {
       const normalized = String(typeId || '').trim();
-      if (normalized === 'caresens_air' || normalized === 'barogen_fit') return 'centered';
+      if (normalized === 'caresens_air' || normalized === 'barogen_fit') return 'centered_closeup';
       if (normalized === 'dexcom_g7') return 'dexcom_box';
-      return isLikelyDexcomBox(baseCanvas) ? 'dexcom_box' : 'centered';
+      return isLikelyDexcomBox(baseCanvas) ? 'dexcom_box' : 'centered_closeup';
     }
 
     async function decodeCanvasWithHybridFallbacks(reader, baseCanvas, typeId, progressCb) {
@@ -1289,6 +1322,11 @@
         ['original-gray', createProcessedCanvas(baseCanvas, 'gray')],
         ['original-threshold2', createProcessedCanvas(baseCanvas, 'threshold2')],
         ['original-2x', scaleCanvas(baseCanvas, 2)],
+        ['closeup-code', closeupCrop],
+        ['closeup-code-gray', createProcessedCanvas(closeupCrop, 'gray')],
+        ['closeup-code-threshold2', createProcessedCanvas(closeupCrop, 'threshold2')],
+        ['closeup-code-adaptive', adaptiveThresholdCanvas(closeupCrop, 10, 10)],
+        ['closeup-code-4x', scaleCanvas(closeupCrop, 4)],
         ['center', centerCrop],
         ['center-threshold', createProcessedCanvas(centerCrop, 'threshold')],
         ['center-threshold2', createProcessedCanvas(centerCrop, 'threshold2')],
@@ -1305,26 +1343,38 @@
         ['screen-code-threshold2', createProcessedCanvas(screenShotCrop, 'threshold2')],
         ['screen-code-adaptive', adaptiveThresholdCanvas(screenShotCrop, 10, 10)],
         ['screen-code-4x', scaleCanvas(screenShotCrop, 4)],
-        ['closeup-code', closeupCrop],
-        ['closeup-code-gray', createProcessedCanvas(closeupCrop, 'gray')],
-        ['closeup-code-threshold2', createProcessedCanvas(closeupCrop, 'threshold2')],
-        ['closeup-code-adaptive', adaptiveThresholdCanvas(closeupCrop, 10, 10)],
-        ['closeup-code-4x', scaleCanvas(closeupCrop, 4)],
         ['original-threshold', createProcessedCanvas(baseCanvas, 'threshold')]
       ];
       const dexcomAttempts = [
+        ['original', baseCanvas],
+        ['original-gray', createProcessedCanvas(baseCanvas, 'gray')],
+        ['original-threshold2', createProcessedCanvas(baseCanvas, 'threshold2')],
         ['dexcom-band', dexcomWideCrop],
         ['dexcom-band-threshold', createProcessedCanvas(dexcomWideCrop, 'threshold')],
         ['dexcom-band-threshold2', createProcessedCanvas(dexcomWideCrop, 'threshold2')],
         ['dexcom-band-adaptive', adaptiveThresholdCanvas(dexcomWideCrop, 10, 10)],
         ['dexcom-band-invert', createProcessedCanvas(dexcomWideCrop, 'invert')],
         ['dexcom-band-4x', scaleCanvas(dexcomWideCrop, 4)],
+        ['box-band', cropCanvas(baseCanvas, 'box-band')],
+        ['box-band-threshold2', createProcessedCanvas(cropCanvas(baseCanvas, 'box-band'), 'threshold2')],
+        ['box-band-adaptive', adaptiveThresholdCanvas(cropCanvas(baseCanvas, 'box-band'), 10, 10)],
+        ['box-band-4x', scaleCanvas(cropCanvas(baseCanvas, 'box-band'), 2)],
         ['box-tight', boxCrop],
         ['box-tight-threshold', createProcessedCanvas(boxCrop, 'threshold')],
         ['box-tight-threshold2', createProcessedCanvas(boxCrop, 'threshold2')],
         ['box-tight-adaptive', adaptiveThresholdCanvas(boxCrop, 8, 10)],
         ['box-tight-invert', createProcessedCanvas(boxCrop, 'invert')],
-        ['box-tight-4x', scaleCanvas(boxCrop, 4)]
+        ['box-tight-4x', scaleCanvas(boxCrop, 4)],
+        ['screen-code', screenShotCrop],
+        ['screen-code-gray', createProcessedCanvas(screenShotCrop, 'gray')],
+        ['screen-code-threshold2', createProcessedCanvas(screenShotCrop, 'threshold2')],
+        ['screen-code-adaptive', adaptiveThresholdCanvas(screenShotCrop, 10, 10)],
+        ['screen-code-4x', scaleCanvas(screenShotCrop, 4)],
+        ['closeup-code', closeupCrop],
+        ['closeup-code-gray', createProcessedCanvas(closeupCrop, 'gray')],
+        ['closeup-code-threshold2', createProcessedCanvas(closeupCrop, 'threshold2')],
+        ['closeup-code-adaptive', adaptiveThresholdCanvas(closeupCrop, 10, 10)],
+        ['closeup-code-4x', scaleCanvas(closeupCrop, 4)]
       ];
 
       if (profile === 'dexcom_box') attempts.push(...dexcomAttempts, ...centeredAttempts);
@@ -2014,6 +2064,7 @@
       els.formExpiry.value = todayISO();
       els.formOpenedAt.value = '';
       els.formType.value = '';
+      renderScanGuidance('');
       els.scanStatus.textContent = '카메라로 찍은 사진이나 이미지 파일을 넣으면 인식합니다.';
       els.scanImagePreview.classList.add('hidden');
       els.scanImagePreview.removeAttribute('src');
@@ -2046,6 +2097,7 @@
       els.formModeBadge.textContent = '수정 모드';
       els.editingId.value = item.id;
       els.formType.value = item.typeId;
+      renderScanGuidance(item.typeId);
       els.formLot.value = item.lot || '';
       els.formExpiry.value = item.expiry || '';
       els.formOpenedAt.value = item.openedAt || '';
@@ -2136,6 +2188,7 @@
       els.gs1RawInput.value = '';
       setScanStatus('GS1 원문 입력을 지웠습니다.', 'info');
     });
+    els.formType.addEventListener('change', () => renderScanGuidance(els.formType.value));
     els.reloadChangelog.addEventListener('click', loadChangelog);
     els.filterType.addEventListener('change', renderInventory);
     els.filterStatus.addEventListener('change', renderInventory);
@@ -2275,6 +2328,7 @@
     function seedFormDefaults() {
       els.formType.value = '';
       els.formExpiry.value = todayISO();
+      renderScanGuidance('');
     }
 
     if (!state.sensorTypes.length) state.sensorTypes = structuredClone(DEFAULT_SENSOR_TYPES);
