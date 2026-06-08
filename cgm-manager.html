@@ -450,6 +450,7 @@
     </div>
   </template>
 
+  <script src="https://cdn.jsdelivr.net/npm/zxing-wasm@2.2.0/dist/iife/reader/index.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.23.0/umd/index.min.js"></script>
   <script>
     const STORAGE_KEY = 'cgm_v5';
@@ -1125,6 +1126,24 @@
       return scanReader;
     }
 
+    async function decodeWithZXingWasm(input, label = 'wasm') {
+      if (!window.ZXingWASM?.readBarcodes) return null;
+      const results = await window.ZXingWASM.readBarcodes(input, {
+        formats: ['DataMatrix'],
+        tryHarder: true,
+        maxNumberOfSymbols: 4
+      });
+      const found = Array.isArray(results)
+        ? results.find(result => isPlausibleScanText(result?.text))
+        : null;
+      if (!found?.text) return null;
+      return {
+        text: found.text,
+        format: found.format || 'data_matrix',
+        method: `zxing-wasm:${label}`
+      };
+    }
+
     async function ensureBarcodeDetector() {
       if (!('BarcodeDetector' in window)) return null;
       if (barcodeDetector) return barcodeDetector;
@@ -1169,9 +1188,14 @@
         els.scanImagePreview.src = objectUrl;
         els.scanImagePreview.classList.remove('hidden');
         setScanStatus('이미지에서 인식 중입니다.', 'busy');
-        const result = await decodeCanvasWithHybridFallbacks(reader, canvas, els.formType.value, (index, total, label) => {
-          setScanStatus(`이미지에서 인식 중입니다. ${index}/${total}${label ? ` - ${label}` : ''}`, 'busy');
-        });
+        let result =
+          await decodeWithZXingWasm(file, 'file') ||
+          await decodeWithZXingWasm(ctx.getImageData(0, 0, canvas.width, canvas.height), 'imageData');
+        if (!result) {
+          result = await decodeCanvasWithHybridFallbacks(reader, canvas, els.formType.value, (index, total, label) => {
+            setScanStatus(`이미지에서 인식 중입니다. ${index}/${total}${label ? ` - ${label}` : ''}`, 'busy');
+          });
+        }
         applyScanResult(result.text);
         finalTone = 'ok';
         finalMessage = `인식 성공${result.method ? `(${result.method})` : ''}: ${result.text}`;
