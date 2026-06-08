@@ -1259,22 +1259,28 @@
 
       const centeredAttempts = [
         ['original', baseCanvas],
+        ['original-gray', createProcessedCanvas(baseCanvas, 'gray')],
+        ['original-threshold2', createProcessedCanvas(baseCanvas, 'threshold2')],
+        ['original-2x', scaleCanvas(baseCanvas, 2)],
         ['center', centerCrop],
         ['center-threshold', createProcessedCanvas(centerCrop, 'threshold')],
+        ['center-threshold2', createProcessedCanvas(centerCrop, 'threshold2')],
+        ['center-gray', createProcessedCanvas(centerCrop, 'gray')],
+        ['center-adaptive', adaptiveThresholdCanvas(centerCrop, 10, 10)],
         ['center-invert', createProcessedCanvas(centerCrop, 'invert')],
         ['center-rot90', rotateCanvas(centerCrop, 90)],
         ['center-rot270', rotateCanvas(centerCrop, 270)],
         ['center-rot90-threshold', createProcessedCanvas(rotateCanvas(centerCrop, 90), 'threshold')],
         ['center-rot270-threshold', createProcessedCanvas(rotateCanvas(centerCrop, 270), 'threshold')],
         ['center-4x', scaleCanvas(centerCrop, 4)],
-        ['original-threshold', createProcessedCanvas(baseCanvas, 'threshold')]
-      ];
-      const dexcomAttempts = [
         ['screen-code', screenShotCrop],
         ['screen-code-gray', createProcessedCanvas(screenShotCrop, 'gray')],
         ['screen-code-threshold2', createProcessedCanvas(screenShotCrop, 'threshold2')],
         ['screen-code-adaptive', adaptiveThresholdCanvas(screenShotCrop, 10, 10)],
         ['screen-code-4x', scaleCanvas(screenShotCrop, 4)],
+        ['original-threshold', createProcessedCanvas(baseCanvas, 'threshold')]
+      ];
+      const dexcomAttempts = [
         ['dexcom-band', dexcomWideCrop],
         ['dexcom-band-threshold', createProcessedCanvas(dexcomWideCrop, 'threshold')],
         ['dexcom-band-threshold2', createProcessedCanvas(dexcomWideCrop, 'threshold2')],
