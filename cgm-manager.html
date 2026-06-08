@@ -1250,8 +1250,10 @@
     async function decodeCanvasWithHybridFallbacks(reader, baseCanvas, typeId, progressCb) {
       const attempts = [];
       const dmRects = findDataMatrixRects(baseCanvas);
+      const textureRects = findTextureRects(baseCanvas);
       const centerCrop = cropCanvas(baseCanvas, 'center');
       const boxCrop = cropCanvas(baseCanvas, 'box-band-tight');
+      const dexcomWideCrop = cropCanvas(baseCanvas, 'dexcom-band');
       const profile = getScanProfile(typeId, baseCanvas);
 
       const centeredAttempts = [
@@ -1267,8 +1269,16 @@
         ['original-threshold', createProcessedCanvas(baseCanvas, 'threshold')]
       ];
       const dexcomAttempts = [
+        ['dexcom-band', dexcomWideCrop],
+        ['dexcom-band-threshold', createProcessedCanvas(dexcomWideCrop, 'threshold')],
+        ['dexcom-band-threshold2', createProcessedCanvas(dexcomWideCrop, 'threshold2')],
+        ['dexcom-band-adaptive', adaptiveThresholdCanvas(dexcomWideCrop, 10, 10)],
+        ['dexcom-band-invert', createProcessedCanvas(dexcomWideCrop, 'invert')],
+        ['dexcom-band-4x', scaleCanvas(dexcomWideCrop, 4)],
         ['box-tight', boxCrop],
         ['box-tight-threshold', createProcessedCanvas(boxCrop, 'threshold')],
+        ['box-tight-threshold2', createProcessedCanvas(boxCrop, 'threshold2')],
+        ['box-tight-adaptive', adaptiveThresholdCanvas(boxCrop, 8, 10)],
         ['box-tight-invert', createProcessedCanvas(boxCrop, 'invert')],
         ['box-tight-4x', scaleCanvas(boxCrop, 4)]
       ];
@@ -1280,8 +1290,19 @@
         const cropped = cropRectCanvas(baseCanvas, dmRects[i], 18);
         attempts.push([`dm-${i + 1}`, cropped]);
         attempts.push([`dm-${i + 1}-threshold`, createProcessedCanvas(cropped, 'threshold')]);
+        attempts.push([`dm-${i + 1}-threshold2`, createProcessedCanvas(cropped, 'threshold2')]);
+        attempts.push([`dm-${i + 1}-adaptive`, adaptiveThresholdCanvas(cropped, 8, 10)]);
         attempts.push([`dm-${i + 1}-invert`, createProcessedCanvas(cropped, 'invert')]);
         attempts.push([`dm-${i + 1}-4x`, scaleCanvas(cropped, 4)]);
+      }
+      if (profile === 'dexcom_box') {
+        for (let i = 0; i < textureRects.length; i += 1) {
+          const cropped = cropRectCanvas(baseCanvas, textureRects[i], 20);
+          attempts.push([`texture-${i + 1}`, cropped]);
+          attempts.push([`texture-${i + 1}-threshold2`, createProcessedCanvas(cropped, 'threshold2')]);
+          attempts.push([`texture-${i + 1}-adaptive`, adaptiveThresholdCanvas(cropped, 8, 10)]);
+          attempts.push([`texture-${i + 1}-4x`, scaleCanvas(cropped, 4)]);
+        }
       }
 
       let lastError = null;
@@ -1577,6 +1598,11 @@
         sy = Math.round(h * 0.64);
         sw = Math.round(w * 0.44);
         sh = Math.round(h * 0.22);
+      } else if (region === 'dexcom-band') {
+        sx = Math.round(w * 0.16);
+        sy = Math.round(h * 0.50);
+        sw = Math.round(w * 0.60);
+        sh = Math.round(h * 0.36);
       }
       canvas.width = Math.max(1, sw);
       canvas.height = Math.max(1, sh);
