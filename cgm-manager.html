@@ -1,0 +1,1993 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>CGMMgr - CGM 재고관리</title>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --panel: #ffffff;
+      --panel-2: #f8fafc;
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: #dbe4f0;
+      --primary: #2563eb;
+      --green: #16a34a;
+      --orange: #d97706;
+      --red: #dc2626;
+      --gray: #64748b;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+      --radius: 8px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .app { min-height: 100vh; display: flex; flex-direction: column; }
+    .topbar {
+      position: sticky; top: 0; z-index: 20;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 12px 16px; background: rgba(243, 246, 251, 0.92); backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+    }
+    .title { display: flex; flex-direction: column; gap: 2px; }
+    .title h1 { margin: 0; font-size: 18px; line-height: 1.1; }
+    .title .sub { color: var(--muted); font-size: 12px; }
+    .today { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .nav {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 8px; padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--line);
+    }
+    .nav button {
+      border: 1px solid var(--line); background: var(--panel); color: var(--text);
+      border-radius: var(--radius); padding: 10px 8px; display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .nav button.active { border-color: var(--primary); color: var(--primary); background: #eff6ff; }
+    .main { width: min(1120px, calc(100% - 24px)); margin: 12px auto 24px; display: grid; gap: 12px; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .section { padding: 14px; }
+    .grid { display: grid; gap: 12px; }
+    .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    @media (max-width: 960px) {
+      .grid.cols-4, .grid.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .grid.cols-4, .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; }
+      .nav { grid-template-columns: repeat(2, 1fr); }
+      .main { width: calc(100% - 16px); margin-top: 8px; }
+    }
+    .stat {
+      padding: 14px; border-radius: var(--radius); background: var(--panel-2); border: 1px solid var(--line);
+      display: flex; flex-direction: column; gap: 6px; min-height: 96px;
+    }
+    .stat .label { color: var(--muted); font-size: 12px; }
+    .stat .value { font-size: 26px; font-weight: 700; letter-spacing: 0; }
+    .stat .hint { font-size: 12px; color: var(--muted); }
+    .bar { height: 8px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+    .bar > span { display: block; height: 100%; border-radius: inherit; }
+    .toolbar {
+      display: grid; gap: 8px; grid-template-columns: 1.2fr 1fr 1fr auto;
+    }
+    .toolbar .wide { grid-column: span 2; }
+    .field, select, input, textarea {
+      width: 100%; border: 1px solid var(--line); background: white; color: var(--text);
+      border-radius: var(--radius); padding: 10px 12px; outline: none;
+    }
+    textarea { min-height: 92px; resize: vertical; }
+    .field:focus, select:focus, input:focus, textarea:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+    .btn {
+      border: 1px solid var(--line); background: white; color: var(--text);
+      border-radius: var(--radius); padding: 10px 12px; display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn.primary { background: var(--primary); color: white; border-color: var(--primary); }
+    .btn.ghost { background: transparent; }
+    .btn.danger { background: #fef2f2; color: var(--red); border-color: #fecaca; }
+    .btn.small { padding: 7px 10px; font-size: 12px; }
+    .stack { display: flex; gap: 8px; flex-wrap: wrap; }
+    .list { display: grid; gap: 10px; }
+    .item {
+      padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: white;
+      display: grid; gap: 8px;
+    }
+    .item.head {
+      display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr auto; gap: 8px; align-items: center;
+      background: #f8fafc; color: var(--muted); font-size: 12px;
+    }
+    .item.row {
+      grid-template-columns: 1.5fr 1fr 1fr 1fr auto; align-items: center;
+    }
+    .meta { color: var(--muted); font-size: 12px; }
+    .name { font-weight: 700; }
+    .status {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px;
+      font-size: 12px; border: 1px solid transparent; white-space: nowrap;
+    }
+    .status.ready { color: #0369a1; background: #e0f2fe; border-color: #bae6fd; }
+    .status.in_use { color: #15803d; background: #dcfce7; border-color: #bbf7d0; }
+    .status.warning { color: #b45309; background: #ffedd5; border-color: #fed7aa; }
+    .status.shelf_warning { color: #b45309; background: #ffedd5; border-color: #fed7aa; }
+    .status.expired { color: #b91c1c; background: #fee2e2; border-color: #fecaca; }
+    .status.archived { color: #475569; background: #e2e8f0; border-color: #cbd5e1; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; font-size: 12px; background: #f8fafc; border: 1px solid var(--line); color: var(--muted); }
+    .split { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 12px; }
+    @media (max-width: 960px) { .split { grid-template-columns: 1fr; } }
+    @media (max-width: 640px) {
+      .item.head, .item.row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
+      }
+      .item.head > :nth-child(2),
+      .item.head > :nth-child(3),
+      .item.head > :nth-child(5),
+      .item.row > :nth-child(2),
+      .item.row > :nth-child(3) {
+        display: none;
+      }
+      .item.row > div:first-child .stack {
+        display: none;
+      }
+      .item.row > div:first-child .name,
+      .item.row > div:first-child .meta {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .item.row {
+        padding: 10px 10px 8px;
+        gap: 6px;
+      }
+      .item.row .name { font-size: 13px; line-height: 1.2; }
+      .item.row .meta { font-size: 11px; line-height: 1.25; }
+      .item.row .stack { gap: 6px; }
+      .item.row .btn.small {
+        padding: 6px 8px;
+        font-size: 11px;
+      }
+      .item.row > :nth-child(4) {
+        grid-column: 2;
+        justify-self: end;
+      }
+      .item.head > :nth-child(4) {
+        justify-self: start;
+      }
+      .item.row > :nth-child(5) {
+        grid-column: 1 / -1;
+        justify-self: end;
+      }
+    }
+    .hidden { display: none !important; }
+    .scanner { display: grid; gap: 10px; }
+    .scan-video {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      background: #0f172a;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      object-fit: cover;
+    }
+    .scan-image {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+    .scan-result {
+      padding: 10px 12px;
+      border: 1px dashed var(--line);
+      border-radius: var(--radius);
+      background: #f8fafc;
+      color: var(--muted);
+      min-height: 44px;
+    }
+    .form-shell {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .form-actions {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: nowrap;
+    }
+    .form-actions .btn {
+      flex: 0 0 auto;
+      min-width: 84px;
+      justify-content: center;
+    }
+    dialog {
+      border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(760px, calc(100vw - 24px));
+      box-shadow: 0 20px 60px rgba(15, 23, 42, 0.24);
+    }
+    dialog::backdrop { background: rgba(15, 23, 42, 0.4); }
+    .modal-head, .modal-foot { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+    .modal-foot { border-top: 1px solid var(--line); border-bottom: 0; display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+    .modal-body { padding: 14px 16px; display: grid; gap: 12px; }
+    .kv { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; }
+    .kv .k { color: var(--muted); font-size: 12px; }
+    .kv .v { font-weight: 600; }
+    .mini { font-size: 12px; color: var(--muted); }
+    .footer-note { color: var(--muted); font-size: 12px; padding: 2px 2px 8px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="title">
+        <h1>CGMMgr</h1>
+        <div class="sub">CGM 센서 재고관리</div>
+      </div>
+      <div class="today" id="todayText"></div>
+    </div>
+    <div class="nav">
+      <button class="active" data-view="dashboard">대시보드</button>
+      <button data-view="inventory">재고 목록</button>
+      <button data-view="add">재고 추가</button>
+      <button data-view="settings">설정</button>
+    </div>
+
+    <main class="main">
+      <section id="view-dashboard" class="grid gap-12">
+        <div class="grid cols-4" id="statsRow"></div>
+        <div class="split">
+          <div class="panel section">
+            <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <strong>우선 사용 대상</strong>
+              <span class="badge" id="priorityCount"></span>
+            </div>
+            <div class="list" id="priorityList"></div>
+          </div>
+          <div class="panel section">
+            <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <strong>센서 종류 현황</strong>
+              <span class="badge" id="typeCount"></span>
+            </div>
+            <div class="list" id="typeSummary"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-inventory" class="panel section hidden">
+        <div class="toolbar" style="margin-bottom: 12px;">
+          <select id="filterType"></select>
+          <select id="filterStatus">
+            <option value="">상태 전체</option>
+            <option value="ready">미개봉</option>
+            <option value="in_use">사용중</option>
+            <option value="shelf_warning">유효기간 임박</option>
+            <option value="expired">만료</option>
+            <option value="archived">폐기</option>
+          </select>
+          <select id="sortBy">
+            <option value="effectiveAsc">실효 종료일 오름차순</option>
+            <option value="openedAsc">개봉일 오름차순</option>
+            <option value="createdDesc">등록일 최신순</option>
+          </select>
+          <button class="btn primary" id="quickAdd">+ 재고 추가</button>
+        </div>
+          <div class="list">
+            <div class="item head">
+              <div>센서 / LOT</div>
+              <div>보관 유효기간</div>
+              <div>사용기간 종료일</div>
+              <div>상태</div>
+              <div>동작</div>
+            </div>
+            <div id="inventoryList" class="list"></div>
+          </div>
+      </section>
+
+      <section id="view-add" class="panel section hidden">
+        <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <strong id="formTitle">재고 추가</strong>
+          <span class="badge" id="formModeBadge">신규 등록</span>
+        </div>
+        <div class="split">
+          <div class="panel section" style="box-shadow:none;">
+            <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <strong>이미지 스캔</strong>
+              <span class="badge">DataMatrix</span>
+            </div>
+            <div class="scanner">
+              <div class="stack">
+                <label class="btn primary" for="scanCaptureInput" style="cursor:pointer;">카메라로 촬영</label>
+                <input id="scanCaptureInput" type="file" accept="image/*" capture="environment" class="hidden" />
+                <label class="btn" for="scanImageInput" style="cursor:pointer;">이미지 불러오기</label>
+                <input id="scanImageInput" type="file" accept="image/*" class="hidden" />
+              </div>
+              <div class="scan-result" id="scanStatus">카메라로 찍은 사진이나 이미지 파일을 넣으면 인식합니다.</div>
+              <img id="scanImagePreview" class="scan-image hidden" alt="scan preview" />
+              <div class="mini">인식되면 LOT, 유효기간, 센서 종류를 자동 채웁니다.</div>
+            </div>
+            <div class="panel section" style="box-shadow:none; margin-top:12px;">
+              <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <strong>GS1 원문 입력</strong>
+                <span class="badge">Fallback</span>
+              </div>
+              <textarea id="gs1RawInput" placeholder="예: (01)06972831642299(17)270325(10)LT4F260326V(21)260326JXGE457CAA36"></textarea>
+              <div class="form-actions" style="padding-top: 8px;">
+                <button type="button" class="btn" id="clearGs1Raw">지우기</button>
+                <button type="button" class="btn primary" id="applyGs1Raw">해석해서 반영</button>
+              </div>
+            </div>
+          </div>
+          <form id="inventoryForm" class="form-shell">
+            <input type="hidden" id="editingId" />
+            <input type="hidden" id="formSerial" />
+            <div class="grid cols-2">
+              <label>
+                <div class="mini">센서 종류</div>
+                <select id="formType" required></select>
+              </label>
+              <label>
+                <div class="mini">LOT</div>
+                <input id="formLot" placeholder="예: 250701C001" />
+              </label>
+              <label>
+                <div class="mini">유효기간</div>
+                <input id="formExpiry" type="date" required />
+              </label>
+              <label>
+                <div class="mini">개봉일</div>
+                <input id="formOpenedAt" type="date" />
+              </label>
+            </div>
+            <label style="grid-column: 1 / -1;">
+              <div class="mini">메모</div>
+              <textarea id="formNotes" placeholder="입고 메모, 특이사항"></textarea>
+            </label>
+            <div class="form-actions">
+              <button type="button" class="btn" id="cancelEdit">취소</button>
+              <button type="submit" class="btn primary">저장</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section id="view-settings" class="panel section hidden">
+        <div class="split">
+          <div class="grid" style="gap:12px;">
+            <div class="panel section" style="box-shadow:none;">
+              <strong>경고 기준</strong>
+              <div class="mini" style="margin:8px 0 10px;">만료 임박 판단 일수</div>
+              <div class="stack">
+                <input id="alertDays" type="number" min="1" step="1" style="max-width: 160px;" />
+                <button class="btn primary" id="saveAlertDays" type="button">저장</button>
+              </div>
+            </div>
+            <div class="panel section" style="box-shadow:none;">
+              <strong>백업 / 복원</strong>
+              <div class="stack" style="margin-top: 10px;">
+                <button class="btn" id="exportData" type="button">JSON 내보내기</button>
+                <label class="btn" for="importFile" style="cursor:pointer;">JSON 불러오기</label>
+                <input id="importFile" type="file" accept="application/json" class="hidden" />
+              </div>
+            </div>
+          </div>
+          <div class="panel section" style="box-shadow:none;">
+            <div class="stack" style="justify-content: space-between; align-items: center;">
+              <strong>센서 종류 관리</strong>
+              <span class="badge" id="sensorTypeTotal"></span>
+            </div>
+            <form id="typeForm" class="grid" style="gap:8px; margin-top: 12px;">
+              <input type="hidden" id="editingTypeId" />
+              <input id="typeName" placeholder="이름" required />
+              <div class="grid cols-2">
+                <input id="typeWearDays" type="number" min="1" step="1" placeholder="사용기간(일)" required />
+                <input id="typeColor" type="color" value="#64748b" style="height: 42px; padding: 4px;" />
+              </div>
+              <div class="grid cols-2">
+                <input id="typeGtin" placeholder="GTIN" />
+                <input id="typeModel" placeholder="모델명" />
+              </div>
+              <div class="form-actions" style="padding-top: 4px;">
+                <button class="btn" type="button" id="cancelTypeEdit" disabled>취소</button>
+                <button class="btn primary" type="submit" id="typeSubmitBtn">센서 종류 추가</button>
+              </div>
+            </form>
+            <div class="list" id="typeList" style="margin-top: 12px;"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="detailDialog">
+    <form method="dialog">
+      <div class="modal-head">
+        <div class="stack" style="justify-content: space-between; align-items: center;">
+          <strong id="detailTitle">상세</strong>
+          <button class="btn small" value="cancel">닫기</button>
+        </div>
+      </div>
+      <div class="modal-body" id="detailBody"></div>
+      <div class="modal-foot">
+        <button class="btn" type="button" id="detailEdit">수정</button>
+        <button class="btn" type="button" id="detailUseStart">사용 시작</button>
+        <button class="btn" type="button" id="detailUseEnd">사용 종료</button>
+        <button class="btn danger" type="button" id="detailArchive">폐기</button>
+        <button class="btn danger" type="button" id="detailDelete">삭제</button>
+      </div>
+    </form>
+  </dialog>
+
+  <template id="rowTemplate">
+    <div class="item row">
+      <div>
+        <div class="name"></div>
+        <div class="meta"></div>
+      </div>
+      <div class="cell-expiry"></div>
+      <div class="cell-effective"></div>
+      <div class="cell-status"></div>
+      <div class="stack cell-actions"></div>
+    </div>
+  </template>
+
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.23.0/umd/index.min.js"></script>
+  <script>
+    const STORAGE_KEY = 'cgm_v5';
+    const DEFAULT_SETTINGS = { alertDays: 30 };
+    const DEFAULT_SENSOR_TYPES = [
+      { id: 'caresens_air', name: 'CareSens Air', wearDays: 15, color: '#00c6fb', gtin: '08809126640655', model: 'CGM-ST-002' },
+      { id: 'barogen_fit', name: 'Barozen Fit', wearDays: 15, color: '#43e97b', gtin: '08806712005959', model: 'CGM-ST-003' },
+      { id: 'dexcom_g7', name: 'Dexcom G7', wearDays: 10, color: '#f7971e', gtin: '00386270004673', model: '' },
+      { id: 'fakoring', name: '피코링 / Picoling', wearDays: 15, color: '#f953c6', gtin: '06958590313168', model: '' },
+      { id: 'gs1', name: 'GS1 (Sibionics)', wearDays: 14, color: '#a78bfa', gtin: '06972831642299', model: '' },
+      { id: 'libre2', name: 'FreeStyle Libre 2', wearDays: 14, color: '#38bdf8', gtin: '', model: '' }
+    ];
+
+    const els = {
+      todayText: document.getElementById('todayText'),
+      statsRow: document.getElementById('statsRow'),
+      priorityList: document.getElementById('priorityList'),
+      priorityCount: document.getElementById('priorityCount'),
+      typeSummary: document.getElementById('typeSummary'),
+      typeCount: document.getElementById('typeCount'),
+      inventoryList: document.getElementById('inventoryList'),
+      filterType: document.getElementById('filterType'),
+      filterStatus: document.getElementById('filterStatus'),
+      sortBy: document.getElementById('sortBy'),
+      quickAdd: document.getElementById('quickAdd'),
+      viewButtons: Array.from(document.querySelectorAll('.nav button')),
+      views: {
+        dashboard: document.getElementById('view-dashboard'),
+        inventory: document.getElementById('view-inventory'),
+        add: document.getElementById('view-add'),
+        settings: document.getElementById('view-settings')
+      },
+      editingId: document.getElementById('editingId'),
+      formSerial: document.getElementById('formSerial'),
+      formType: document.getElementById('formType'),
+      formLot: document.getElementById('formLot'),
+      formExpiry: document.getElementById('formExpiry'),
+      formOpenedAt: document.getElementById('formOpenedAt'),
+      formNotes: document.getElementById('formNotes'),
+      inventoryForm: document.getElementById('inventoryForm'),
+      formTitle: document.getElementById('formTitle'),
+      formModeBadge: document.getElementById('formModeBadge'),
+      cancelEdit: document.getElementById('cancelEdit'),
+      scanCaptureInput: document.getElementById('scanCaptureInput'),
+      scanImageInput: document.getElementById('scanImageInput'),
+      scanStatus: document.getElementById('scanStatus'),
+      scanImagePreview: document.getElementById('scanImagePreview'),
+      gs1RawInput: document.getElementById('gs1RawInput'),
+      applyGs1Raw: document.getElementById('applyGs1Raw'),
+      clearGs1Raw: document.getElementById('clearGs1Raw'),
+      alertDays: document.getElementById('alertDays'),
+      saveAlertDays: document.getElementById('saveAlertDays'),
+      exportData: document.getElementById('exportData'),
+      importFile: document.getElementById('importFile'),
+      sensorTypeTotal: document.getElementById('sensorTypeTotal'),
+      typeForm: document.getElementById('typeForm'),
+      editingTypeId: document.getElementById('editingTypeId'),
+      typeName: document.getElementById('typeName'),
+      typeWearDays: document.getElementById('typeWearDays'),
+      typeColor: document.getElementById('typeColor'),
+      typeGtin: document.getElementById('typeGtin'),
+      typeModel: document.getElementById('typeModel'),
+      typeSubmitBtn: document.getElementById('typeSubmitBtn'),
+      cancelTypeEdit: document.getElementById('cancelTypeEdit'),
+      typeList: document.getElementById('typeList'),
+      detailDialog: document.getElementById('detailDialog'),
+      detailTitle: document.getElementById('detailTitle'),
+      detailBody: document.getElementById('detailBody'),
+      detailEdit: document.getElementById('detailEdit'),
+      detailUseStart: document.getElementById('detailUseStart'),
+      detailUseEnd: document.getElementById('detailUseEnd'),
+      detailArchive: document.getElementById('detailArchive'),
+      detailDelete: document.getElementById('detailDelete'),
+      rowTemplate: document.getElementById('rowTemplate')
+    };
+
+    let state = loadState();
+    let selectedId = null;
+    let scanReader = null;
+    let barcodeDetector = null;
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          return {
+            sensorTypes: normalizeSensorTypes(structuredClone(DEFAULT_SENSOR_TYPES)),
+            inventory: [],
+            settings: { ...DEFAULT_SETTINGS }
+          };
+        }
+        const parsed = JSON.parse(raw);
+        return {
+          sensorTypes: normalizeSensorTypes(
+            Array.isArray(parsed.sensorTypes) && parsed.sensorTypes.length ? parsed.sensorTypes : structuredClone(DEFAULT_SENSOR_TYPES)
+          ),
+          inventory: Array.isArray(parsed.inventory) ? parsed.inventory : [],
+          settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) }
+        };
+      } catch {
+        return {
+          sensorTypes: normalizeSensorTypes(structuredClone(DEFAULT_SENSOR_TYPES)),
+          inventory: [],
+          settings: { ...DEFAULT_SETTINGS }
+        };
+      }
+    }
+
+    function normalizeSensorTypes(list) {
+      return list.map(type => {
+        if (!type) return type;
+        if (type.id === 'fakoring') {
+          return {
+            ...type,
+            name: '피코링 / Picoling',
+            aliases: ['fakoring', 'picoling', '피코링']
+          };
+        }
+        if (type.id === 'dexcom_g7') {
+          return {
+            ...type,
+            gtin: '00386270004673',
+            model: type.model || 'STP-GT-009',
+            aliases: ['dexcom', 'dexcom g7', 'g7', 'stp-gt-009']
+          };
+        }
+        return type;
+      });
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function uid(prefix = 'id') {
+      return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+    }
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+    function todayISO() { return toISODate(new Date()); }
+    function toISODate(d) {
+      const x = new Date(d);
+      x.setHours(0, 0, 0, 0);
+      return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+    }
+    function fromISODate(s) {
+      if (!s) return null;
+      const d = new Date(`${s}T00:00:00`);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    function addDays(dateStr, days) {
+      const d = fromISODate(dateStr);
+      if (!d) return null;
+      d.setDate(d.getDate() + Number(days || 0));
+      return toISODate(d);
+    }
+    function minDate(a, b) {
+      if (!a) return b || '';
+      if (!b) return a || '';
+      return a <= b ? a : b;
+    }
+    function daysBetween(a, b) {
+      const da = fromISODate(a), db = fromISODate(b);
+      if (!da || !db) return null;
+      return Math.round((db - da) / 86400000);
+    }
+    function fmtDate(s) {
+      if (!s) return '-';
+      return s;
+    }
+    function sensorTypeById(id) {
+      return state.sensorTypes.find(t => t.id === id) || null;
+    }
+    function calc(item) {
+      const type = sensorTypeById(item.typeId) || { wearDays: 0, name: '알 수 없음', color: '#64748b' };
+      const expiry = item.expiry || '';
+      const shelfRemaining = expiry ? daysBetween(todayISO(), expiry) : null;
+      const wearEnd = item.openedAt ? addDays(item.openedAt, type.wearDays) : '';
+      const wearRemaining = wearEnd ? daysBetween(todayISO(), wearEnd) : null;
+      const today = todayISO();
+      const alertDays = Number(state.settings.alertDays || 30);
+      const shelfWarning = shelfRemaining != null && shelfRemaining >= 0 && shelfRemaining <= alertDays;
+      const shelfExpired = shelfRemaining != null && shelfRemaining < 0;
+      const wearExpired = item.openedAt && wearRemaining != null && wearRemaining < 0;
+      const effective = item.archived ? expiry || wearEnd || '' : minDate(expiry, wearEnd);
+      const remaining = effective ? daysBetween(today, effective) : null;
+      let status = 'ready';
+      if (item.archived) status = 'archived';
+      else if (shelfExpired || wearExpired) status = 'expired';
+      else if (shelfWarning) status = 'shelf_warning';
+      else if (item.openedAt) status = 'in_use';
+      else status = 'ready';
+      return {
+        type,
+        wearEnd,
+        effective,
+        remaining,
+        shelfRemaining,
+        wearRemaining,
+        shelfWarning,
+        shelfExpired,
+        wearExpired,
+        status
+      };
+    }
+    function statusLabel(status) {
+      return {
+        ready: '미개봉',
+        in_use: '사용중',
+        shelf_warning: '유효기간 임박',
+        expired: '만료',
+        archived: '폐기'
+      }[status] || status;
+    }
+
+    function yymmddToISO(raw) {
+      if (!/^\d{6}$/.test(raw || '')) return '';
+      const yy = Number(raw.slice(0, 2));
+      const mm = raw.slice(2, 4);
+      const dd = raw.slice(4, 6);
+      const year = yy < 50 ? 2000 + yy : 1900 + yy;
+      if (dd === '00') {
+        const last = new Date(year, Number(mm), 0).getDate();
+        return `${year}-${mm}-${pad(last)}`;
+      }
+      return `${year}-${mm}-${dd}`;
+    }
+
+    function extractGs1CompactFields(text) {
+      const compact = String(text || '').replace(/^[^A-Za-z0-9]+/, '');
+      const patterns = [
+        /^00(?<sscc>\d{18})11(?<mfg>\d{6})17(?<expiry>\d{6})10(?<lot>[A-Za-z0-9\-\/]+)21(?<serial>[A-Za-z0-9\-\/]+)241(?<productCode>[A-Za-z0-9\-\/]+)30(?<count>\d+)$/i,
+        /^00(?<sscc>\d{18})01(?<gtin>\d{14})11(?<mfg>\d{6})17(?<expiry>\d{6})10(?<lot>[A-Za-z0-9\-\/]+)21(?<serial>[A-Za-z0-9\-\/]+)241(?<productCode>[A-Za-z0-9\-\/]+)30(?<count>\d+)$/i,
+        /^01(?<gtin>\d{14})11(?<mfg>\d{6})17(?<expiry>\d{6})10(?<lot>[A-Za-z0-9\-\/]+)21(?<serial>[A-Za-z0-9\-\/]+)241(?<productCode>[A-Za-z0-9\-\/]+)30(?<count>\d+)$/i,
+        /^01(?<gtin>\d{14})17(?<expiry>\d{6})10(?<lot>[A-Za-z0-9\-\/]+)21(?<serial>[A-Za-z0-9\-\/]+)241(?<productCode>[A-Za-z0-9\-\/]+)30(?<count>\d+)$/i,
+        /^01(?<gtin>\d{14})11(?<mfg>\d{6})17(?<expiry>\d{6})10(?<lot>[A-Za-z0-9\-\/]+)21(?<serial>[A-Za-z0-9\-\/]+)$/i,
+        /^01(?<gtin>\d{14})17(?<expiry>\d{6})10(?<lot>[A-Za-z0-9\-\/]+)21(?<serial>[A-Za-z0-9\-\/]+)$/i,
+        /^01(?<gtin>\d{14})17(?<expiry>\d{6})10(?<lot>[A-Za-z0-9\-\/]+)$/i
+      ];
+      for (const pattern of patterns) {
+        const match = compact.match(pattern);
+        if (!match?.groups) continue;
+          return {
+            sscc: match.groups.sscc || '',
+            gtin: match.groups.gtin || '',
+            expiry: match.groups.expiry ? yymmddToISO(match.groups.expiry) : '',
+            mfg: match.groups.mfg ? yymmddToISO(match.groups.mfg) : '',
+            lot: match.groups.lot || '',
+          serial: match.groups.serial || '',
+          productCode: match.groups.productCode || ''
+          };
+      }
+      return null;
+    }
+
+    // Robust GS1 fallback parser for noisy compact strings.
+    // It recovers values by anchoring on known AI markers in expected order.
+    function parseGs1ByAiAnchors(text) {
+      const compact = String(text || '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .replace(/^[^A-Z0-9]+/, '');
+      if (!compact) return {};
+
+      const out = {};
+      const gtinMatch = compact.match(/01(\d{14})/);
+      if (gtinMatch) out.gtin = gtinMatch[1];
+
+      const mfgMatch = compact.match(/11(\d{6})/);
+      if (mfgMatch) out.mfg = yymmddToISO(mfgMatch[1]);
+
+      const expiryMatch = compact.match(/17(\d{6})/);
+      if (expiryMatch) out.expiry = yymmddToISO(expiryMatch[1]);
+
+      const ai10 = compact.indexOf('10');
+      if (ai10 >= 0) {
+        const lotStart = ai10 + 2;
+        let lotEnd = compact.length;
+        const nextAiCandidates = ['21', '240', '241', '250', '30'];
+        for (const ai of nextAiCandidates) {
+          const pos = compact.indexOf(ai, lotStart + 1);
+          if (pos >= 0 && pos < lotEnd) lotEnd = pos;
+        }
+        if (lotEnd > lotStart) out.lot = compact.slice(lotStart, lotEnd);
+      }
+
+      const ai21 = compact.indexOf('21');
+      if (ai21 >= 0) {
+        const serialStart = ai21 + 2;
+        let serialEnd = compact.length;
+        const nextAiCandidates = ['240', '241', '250', '30'];
+        for (const ai of nextAiCandidates) {
+          const pos = compact.indexOf(ai, serialStart + 1);
+          if (pos >= 0 && pos < serialEnd) serialEnd = pos;
+        }
+        if (serialEnd > serialStart) out.serial = compact.slice(serialStart, serialEnd);
+      }
+
+      const ai241 = compact.indexOf('241');
+      const ai240 = compact.indexOf('240');
+      const productAiPos = ai241 >= 0 ? ai241 : ai240;
+      if (productAiPos >= 0) {
+        const codeStart = productAiPos + 3;
+        let codeEnd = compact.length;
+        const ai30 = compact.indexOf('30', codeStart + 1);
+        if (ai30 >= 0) codeEnd = ai30;
+        if (codeEnd > codeStart) out.productCode = compact.slice(codeStart, codeEnd);
+      }
+
+      return out;
+    }
+
+    function setScanStatus(message, tone = 'info') {
+      els.scanStatus.textContent = message;
+      els.scanStatus.style.color =
+        tone === 'ok' ? 'var(--green)' :
+        tone === 'err' ? 'var(--red)' :
+        tone === 'busy' ? 'var(--orange)' :
+        'var(--muted)';
+    }
+
+    function parseGs1Text(raw) {
+      const source = String(raw || '').trim();
+      if (!source) return {};
+      const text = source
+        .replace(/^\][A-Za-z0-9]{2}/, '')
+        .replace(/[\x1d\x1c\x04\x1e]/g, '|');
+
+      const out = {};
+      const compact = text
+        .replace(/[()\s]/g, '')
+        .replace(/^[^A-Za-z0-9]+/, '');
+
+      const directCompact = extractGs1CompactFields(compact);
+      if (directCompact) {
+        Object.assign(out, directCompact);
+      }
+
+      if (!directCompact && text.includes('(')) {
+        const re = /\((\d{2})\)/g;
+        const parts = [];
+        let match;
+        while ((match = re.exec(text)) !== null) parts.push({ ai: match[1], index: match.index });
+        parts.forEach((part, idx) => {
+          const start = part.index + 4;
+          const end = idx + 1 < parts.length ? parts[idx + 1].index : text.length;
+          const value = text.slice(start, end).replace(/\|+$/g, '');
+          if (part.ai === '01') out.gtin = value;
+          if (part.ai === '17') out.expiry = yymmddToISO(value);
+          if (part.ai === '10') out.lot = value;
+          if (part.ai === '21') out.serial = value;
+          if (part.ai === '11') out.mfg = yymmddToISO(value);
+          if (part.ai === '240') out.productCode = value;
+          if (part.ai === '250') out.serial = out.serial || value;
+        });
+      }
+
+      if (!directCompact) {
+        const parsedCompact = parseGs1Compact(compact);
+        Object.assign(out, parsedCompact);
+      }
+
+      // Recover fields from noisy strings when strict parsers miss.
+      const anchored = parseGs1ByAiAnchors(text);
+      if (!out.gtin && anchored.gtin) out.gtin = anchored.gtin;
+      if (!out.mfg && anchored.mfg) out.mfg = anchored.mfg;
+      if (!out.expiry && anchored.expiry) out.expiry = anchored.expiry;
+      if (!out.lot && anchored.lot) out.lot = anchored.lot;
+      if (!out.serial && anchored.serial) out.serial = anchored.serial;
+      if (!out.productCode && anchored.productCode) out.productCode = anchored.productCode;
+
+      if (!out.serial || !out.lot || !out.expiry || !out.gtin) {
+        const plainLines = text
+          .replace(/[()]/g, '')
+          .split(/[|\n\r]+/)
+          .map(s => s.trim())
+          .filter(Boolean);
+
+        for (const line of plainLines) {
+          const token = line.toUpperCase();
+          const ai = token.match(/^(00|01|10|11|17|21|30|240|241|250)(.+)$/);
+          if (ai) {
+            const code = ai[1];
+            const value = ai[2].trim();
+            if (code === '00') continue;
+            if (code === '01' && !out.gtin) out.gtin = value.slice(0, 14);
+            else if (code === '17' && !out.expiry) out.expiry = yymmddToISO(value.slice(0, 6));
+            else if (code === '11' && !out.mfg) out.mfg = yymmddToISO(value.slice(0, 6));
+            else if (code === '10' && !out.lot) out.lot = value;
+            else if ((code === '21' || code === '250') && !out.serial) out.serial = value;
+            else if ((code === '240' || code === '241') && !out.productCode) out.productCode = value;
+            else if (code === '30') continue;
+            continue;
+          }
+
+          const keywordMatch = line.match(/^(SN|SERIAL|LOT|EXP|USE BY)\s*[:\s-]*([A-Za-z0-9\-\/]+)/i);
+          if (keywordMatch) {
+            const key = keywordMatch[1].toUpperCase();
+            const value = keywordMatch[2].trim();
+            if ((key === 'SN' || key === 'SERIAL') && !out.serial) out.serial = value;
+            else if (key === 'LOT' && !out.lot) out.lot = value;
+            else if ((key === 'EXP' || key === 'USE BY') && !out.expiry) {
+              const digits = value.replace(/\D/g, '').slice(0, 6);
+              out.expiry = digits ? yymmddToISO(digits) : value;
+            }
+          }
+        }
+      }
+
+      if (!out.gtin && !out.lot && !out.expiry && !out.serial) {
+        const compactPlain = text.replace(/[\s|]/g, '').replace(/^[^A-Za-z0-9]+/, '');
+        if (/^[A-Za-z0-9\-\/]{6,}$/.test(compactPlain)) {
+          out.serial = compactPlain;
+        }
+      }
+      return out;
+    }
+
+    function parseGs1Compact(text) {
+      text = String(text || '').replace(/^[^A-Za-z0-9]+/, '');
+      const state = {
+        gtin: '',
+        expiry: '',
+        mfg: '',
+        lot: '',
+        serial: '',
+        productCode: ''
+      };
+
+      const aiRules = [
+        { ai: '01', type: 'fixed', len: 14, key: 'gtin' },
+        { ai: '11', type: 'fixed', len: 6, key: 'mfg' },
+        { ai: '17', type: 'fixed', len: 6, key: 'expiry' },
+        { ai: '240', type: 'variable', key: 'productCode' },
+        { ai: '241', type: 'variable', key: 'productCode' },
+        { ai: '250', type: 'variable', key: 'serial' },
+        { ai: '10', type: 'variable', key: 'lot' },
+        { ai: '21', type: 'variable', key: 'serial' },
+        { ai: '30', type: 'variable', key: 'count' }
+      ];
+
+      function isAiStartAt(pos) {
+        return aiRules.some(rule => text.startsWith(rule.ai, pos));
+      }
+
+      function nextAiPos(from) {
+        for (let i = from; i < text.length; i++) {
+          if (isAiStartAt(i)) return i;
+        }
+        return -1;
+      }
+
+      function assign(key, value) {
+        if (!value) return;
+        if (key === 'gtin' && !state.gtin) state.gtin = value.slice(0, 14);
+        else if ((key === 'expiry' || key === 'mfg') && !state[key]) state[key] = yymmddToISO(value.slice(0, 6));
+        else if (key === 'serial' && !state.serial) state.serial = value;
+        else if (key === 'lot' && !state.lot) state.lot = value;
+        else if (key === 'productCode' && !state.productCode) state.productCode = value;
+      }
+
+      function parseFrom(pos) {
+        let i = pos;
+        while (i < text.length) {
+          if (text[i] === '|') {
+            i += 1;
+            continue;
+          }
+          const rule = aiRules.find(r => text.startsWith(r.ai, i));
+          if (!rule) return false;
+          i += rule.ai.length;
+          if (rule.type === 'fixed') {
+            const value = text.slice(i, i + rule.len);
+            if (value.length < rule.len) return false;
+            assign(rule.key, value);
+            i += rule.len;
+            continue;
+          }
+
+          const next = nextAiPos(i);
+          if (next === -1) {
+            assign(rule.key, text.slice(i));
+            return true;
+          }
+
+          // variable AI: try the earliest plausible boundary first, then backtrack if needed
+          for (let end = next; end >= i; end--) {
+            const value = text.slice(i, end);
+            const snapshot = { ...state };
+            assign(rule.key, value);
+            if (parseFrom(end)) return true;
+            Object.assign(state, snapshot);
+          }
+          return false;
+        }
+        return true;
+      }
+
+      const ok = parseFrom(0);
+      if (!ok) return {};
+      return state;
+    }
+
+    function applyScanResult(rawText) {
+      const raw = String(rawText || '').trim();
+      const parsed = parseGs1Text(rawText);
+      const type = guessSensorTypeFromScan(parsed);
+      const plainSerialOnly =
+        !!parsed.serial &&
+        !parsed.gtin &&
+        !parsed.lot &&
+        !parsed.expiry &&
+        raw === parsed.serial;
+      if (raw) els.gs1RawInput.value = raw;
+      if (type) els.formType.value = type.id;
+      else if (plainSerialOnly) els.formType.value = '';
+      if (parsed.expiry) els.formExpiry.value = parsed.expiry;
+      else if (plainSerialOnly && !type) els.formExpiry.value = '';
+      if (parsed.lot) els.formLot.value = parsed.lot;
+      else if (plainSerialOnly && !type) els.formLot.value = '';
+      if (parsed.serial) els.formSerial.value = parsed.serial;
+      if (parsed.serial && !els.formNotes.value.includes(parsed.serial)) {
+        els.formNotes.value = `${els.formNotes.value ? `${els.formNotes.value}\n` : ''}SERIAL: ${parsed.serial}`.trim();
+      }
+      const label = [
+        type ? `센서: ${type.name}` : '센서: 미확인',
+        parsed.expiry ? `유효기간: ${parsed.expiry}` : null,
+        parsed.lot ? `LOT: ${parsed.lot}` : null,
+        parsed.serial ? `SERIAL: ${parsed.serial}` : null,
+        plainSerialOnly && !type ? '일련번호만 인식됨' : null
+      ].filter(Boolean).join(' · ');
+      els.scanStatus.textContent = label || `인식됨: ${raw}`;
+      if (parsed.serial || parsed.gtin || parsed.lot) {
+        setScanStatus(label || `인식됨: ${raw}`, 'ok');
+      }
+    }
+
+    function guessSensorTypeFromScan(parsed) {
+      if (parsed.gtin) {
+        const byGtin = state.sensorTypes.find(t => (t.gtin || '') === parsed.gtin);
+        if (byGtin) return byGtin;
+      }
+      if (parsed.sscc || parsed.productCode === 'STP-GT-009') {
+        const byDexcom = state.sensorTypes.find(t => {
+          const id = String(t.id || '').toUpperCase();
+          const model = String(t.model || '').toUpperCase();
+          const aliases = Array.isArray(t.aliases) ? t.aliases.map(v => String(v || '').toUpperCase()) : [];
+          return id === 'DEXCOM_G7' || model === 'STP-GT-009' || aliases.includes('STP-GT-009');
+        });
+        if (byDexcom) return byDexcom;
+      }
+      if (parsed.productCode) {
+        const code = parsed.productCode.toUpperCase();
+        const byModel = state.sensorTypes.find(t => {
+          const model = String(t.model || '').toUpperCase();
+          const aliases = Array.isArray(t.aliases) ? t.aliases.map(v => String(v || '').toUpperCase()) : [];
+          return model === code || aliases.includes(code);
+        });
+        if (byModel) return byModel;
+      }
+      if (parsed.serial) {
+        const matchedInventory = state.inventory.find(item => (item.serial || '') === parsed.serial);
+        if (matchedInventory) {
+          const byItem = sensorTypeById(matchedInventory.typeId);
+          if (byItem) return byItem;
+        }
+      }
+      return null;
+    }
+
+    function applyGs1RawInput() {
+      const raw = els.gs1RawInput.value.trim();
+      if (!raw) {
+        setScanStatus('GS1 원문이 비어 있습니다.', 'err');
+        return;
+      }
+      applyScanResult(raw);
+      setScanStatus('GS1 원문을 해석했습니다.', 'ok');
+    }
+
+    function isPlausibleScanText(text) {
+      const value = String(text || '').trim();
+      if (value.length < 6) return false;
+      if (/^(N|Y|OK|X)$/i.test(value)) return false;
+      if (/^\d+$/.test(value) && value.length < 8) return false;
+      return /[0-9]/.test(value);
+    }
+
+    function buildInventoryKey(typeId, serial, lot, expiry) {
+      const type = sensorTypeById(typeId);
+      const gtin = type?.gtin || '';
+      if (gtin && serial) return `gtin:${gtin}|serial:${serial}`;
+      return `type:${typeId}|lot:${lot || ''}|expiry:${expiry || ''}`;
+    }
+
+    function findDuplicateInventory(typeId, serial, lot, expiry, ignoreId = '') {
+      const key = buildInventoryKey(typeId, serial, lot, expiry);
+      return state.inventory.find(item => {
+        if (ignoreId && item.id === ignoreId) return false;
+        const itemType = sensorTypeById(item.typeId);
+        const itemKey = buildInventoryKey(item.typeId, item.serial || '', item.lot || '', item.expiry || '');
+        if (serial && item.serial && itemType?.gtin && sensorTypeById(typeId)?.gtin) {
+          return itemKey === key;
+        }
+        return itemKey === key;
+      }) || null;
+    }
+
+    function ensureScanReader() {
+      if (!window.ZXing) throw new Error('ZXing 라이브러리를 불러오지 못했습니다.');
+      if (!scanReader) {
+        const ReaderClass = ZXing.BrowserDatamatrixCodeReader || ZXing.BrowserMultiFormatReader;
+        if (ReaderClass === ZXing.BrowserDatamatrixCodeReader) {
+          scanReader = new ReaderClass();
+        } else {
+          const hints = new Map();
+          if (ZXing.DecodeHintType && ZXing.BarcodeFormat) {
+            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.DATA_MATRIX]);
+            hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+          }
+          scanReader = new ReaderClass(hints, 250);
+        }
+      }
+      return scanReader;
+    }
+
+    async function ensureBarcodeDetector() {
+      if (!('BarcodeDetector' in window)) return null;
+      if (barcodeDetector) return barcodeDetector;
+      try {
+        const supported = await window.BarcodeDetector.getSupportedFormats?.();
+        if (Array.isArray(supported) && supported.includes('data_matrix')) {
+          barcodeDetector = new window.BarcodeDetector({ formats: ['data_matrix'] });
+          return barcodeDetector;
+        }
+      } catch {}
+      try {
+        barcodeDetector = new window.BarcodeDetector({ formats: ['data_matrix'] });
+        return barcodeDetector;
+      } catch {
+        return null;
+      }
+    }
+
+    function stopScan() {
+      try { scanReader?.reset?.(); } catch {}
+    }
+
+    async function scanImageFile(file) {
+      if (!file) return;
+      let objectUrl = '';
+      const startedAt = performance.now();
+      let finalTone = 'info';
+      let finalMessage = '';
+      try {
+        const reader = ensureScanReader();
+        objectUrl = URL.createObjectURL(file);
+        const bitmap = await loadImageBitmap(file);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const maxSide = 1200;
+        const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        els.scanImagePreview.src = objectUrl;
+        els.scanImagePreview.classList.remove('hidden');
+        setScanStatus('이미지에서 인식 중입니다.', 'busy');
+        const result = await decodeCanvasWithFallbacks(reader, canvas, (index, total, label) => {
+          setScanStatus(`이미지에서 인식 중입니다. ${index}/${total}${label ? ` - ${label}` : ''}`, 'busy');
+        });
+        applyScanResult(result.text);
+        finalTone = 'ok';
+        finalMessage = `인식 성공${result.method ? `(${result.method})` : ''}: ${result.text}`;
+      } catch (err) {
+        finalTone = 'err';
+        finalMessage = `이미지 인식 실패: ${err?.message || err}`;
+      } finally {
+        els.scanImageInput.value = '';
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        const elapsed = (performance.now() - startedAt) / 1000;
+        const elapsedText = `${elapsed.toFixed(1)}초`;
+        setScanStatus(finalMessage ? `${finalMessage} (${elapsedText})` : `처리 완료 (${elapsedText})`, finalTone);
+      }
+    }
+
+    function loadImageBitmap(file) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(img);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error('이미지를 불러오지 못했습니다.'));
+        };
+        img.src = objectUrl;
+      });
+    }
+
+    async function decodeCanvasWithFallbacks(reader, baseCanvas, progressCb) {
+      const attempts = [];
+      const dmRects = findDataMatrixRects(baseCanvas);
+      const boxCrop = cropCanvas(baseCanvas, 'box-band-tight');
+      const centerCrop = cropCanvas(baseCanvas, 'center');
+      attempts.push(['원본', baseCanvas]);
+      attempts.push(['박스 라벨(타이트)', boxCrop]);
+      attempts.push(['박스 라벨(타이트)+임계값', createProcessedCanvas(boxCrop, 'threshold')]);
+      attempts.push(['박스 라벨(타이트)+반전', createProcessedCanvas(boxCrop, 'invert')]);
+      attempts.push(['박스 라벨(타이트) 4x', scaleCanvas(boxCrop, 4)]);
+      attempts.push(['중앙 크롭', centerCrop]);
+      for (let i = 0; i < dmRects.length; i += 1) {
+        const rect = dmRects[i];
+        const cropped = cropRectCanvas(baseCanvas, rect, 18);
+        attempts.push([`DM 후보 ${i + 1}`, cropped]);
+        attempts.push([`DM 후보 ${i + 1} + 임계값`, createProcessedCanvas(cropped, 'threshold')]);
+        attempts.push([`DM 후보 ${i + 1} + 반전`, createProcessedCanvas(cropped, 'invert')]);
+        attempts.push([`DM 후보 ${i + 1} 4x`, scaleCanvas(cropped, 4)]);
+      }
+
+      let lastError = null;
+      const total = attempts.filter(Boolean).length;
+      let index = 0;
+      for (const [label, canvas] of attempts.filter(Boolean)) {
+        index += 1;
+        try {
+          progressCb?.(index, total, label);
+          const decoded = await decodeCanvasWithReader(reader, canvas);
+          if (decoded?.text) return decoded;
+          const native = await detectWithBarcodeDetector(canvas);
+          if (native) return native;
+          throw new Error('인식 실패');
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      throw lastError || new Error('인식 실패');
+    }
+
+    async function decodeCanvasWithReader(reader, canvas) {
+      const readerAny = reader || ensureScanReader();
+      if (typeof readerAny.decodeFromCanvas === 'function') {
+        const decoded = await withTimeout(readerAny.decodeFromCanvas(canvas), 700);
+        if (decoded?.text && isPlausibleScanText(decoded.text)) return { text: decoded.text, format: decoded.format || 'data_matrix', method: 'ZXing' };
+      }
+      if (typeof readerAny.decodeOnceFromCanvas === 'function') {
+        const decoded = await withTimeout(readerAny.decodeOnceFromCanvas(canvas), 700);
+        if (decoded?.text && isPlausibleScanText(decoded.text)) return { text: decoded.text, format: decoded.format || 'data_matrix', method: 'ZXing' };
+      }
+      if (typeof readerAny.decodeFromImageUrl === 'function') {
+        const url = await canvasToObjectUrl(canvas);
+        try {
+          const decoded = await withTimeout(readerAny.decodeFromImageUrl(url), 900);
+          if (decoded?.text && isPlausibleScanText(decoded.text)) return { text: decoded.text, format: decoded.format || 'data_matrix', method: 'ZXing' };
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      }
+      if (typeof readerAny.decodeFromImageElement === 'function') {
+        const img = new Image();
+        img.src = canvas.toDataURL('image/png');
+        await img.decode();
+        const decoded = await withTimeout(readerAny.decodeFromImageElement(img), 900);
+        if (decoded?.text && isPlausibleScanText(decoded.text)) return { text: decoded.text, format: decoded.format || 'data_matrix', method: 'ZXing' };
+      }
+      return null;
+    }
+
+    function canvasToObjectUrl(canvas) {
+      return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('캔버스를 이미지로 변환하지 못했습니다.'));
+            return;
+          }
+          resolve(URL.createObjectURL(blob));
+        }, 'image/png');
+      });
+    }
+
+    async function detectWithBarcodeDetector(canvas) {
+      const detector = await ensureBarcodeDetector();
+      if (!detector) return null;
+      try {
+        const barcodes = await detector.detect(canvas);
+        const found = barcodes.find(code => code?.rawValue);
+        if (!found) return null;
+        if (!isPlausibleScanText(found.rawValue)) return null;
+        return { text: found.rawValue, format: found.format || 'data_matrix', method: 'BarcodeDetector' };
+      } catch {
+        return null;
+      }
+    }
+
+    function withTimeout(promise, ms) {
+      let timer = null;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`시간 초과(${ms}ms)`)), ms);
+      });
+      return Promise.race([
+        promise.finally(() => clearTimeout(timer)),
+        timeout
+      ]);
+    }
+
+    function rotateCanvas(sourceCanvas, degrees) {
+      const canvas = document.createElement('canvas');
+      const swap = degrees === 90 || degrees === 270;
+      canvas.width = swap ? sourceCanvas.height : sourceCanvas.width;
+      canvas.height = swap ? sourceCanvas.width : sourceCanvas.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((degrees * Math.PI) / 180);
+      ctx.drawImage(sourceCanvas, -sourceCanvas.width / 2, -sourceCanvas.height / 2);
+      return canvas;
+    }
+
+    function scaleCanvas(sourceCanvas, factor) {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(sourceCanvas.width * factor));
+      canvas.height = Math.max(1, Math.round(sourceCanvas.height * factor));
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
+      return canvas;
+    }
+
+    function cropRectCanvas(sourceCanvas, rect, padding = 0) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const padX = Math.round(rect.width * padding / 100);
+      const padY = Math.round(rect.height * padding / 100);
+      const sx = Math.max(0, rect.x - padX);
+      const sy = Math.max(0, rect.y - padY);
+      const ex = Math.min(sourceCanvas.width, rect.x + rect.width + padX);
+      const ey = Math.min(sourceCanvas.height, rect.y + rect.height + padY);
+      const sw = Math.max(1, ex - sx);
+      const sh = Math.max(1, ey - sy);
+      canvas.width = sw;
+      canvas.height = sh;
+      ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+      return canvas;
+    }
+
+    function findDataMatrixRects(sourceCanvas) {
+      const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+      const { width: w, height: h } = sourceCanvas;
+      const { data } = ctx.getImageData(0, 0, w, h);
+      const rects = [];
+      const seen = new Set();
+      const thresholds = [130, 145, 155, 170];
+      const stack = [];
+      const pushRect = (rect) => {
+        const key = [
+          Math.round(rect.x / 4),
+          Math.round(rect.y / 4),
+          Math.round(rect.width / 4),
+          Math.round(rect.height / 4)
+        ].join(':');
+        if (seen.has(key)) return;
+        seen.add(key);
+        rects.push(rect);
+      };
+      for (const threshold of thresholds) {
+        const mask = new Uint8Array(w * h);
+        for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+          const y = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+          mask[p] = y > threshold ? 1 : 0;
+        }
+        const visited = new Uint8Array(w * h);
+        for (let y = Math.round(h * 0.05); y < Math.round(h * 0.98); y++) {
+          for (let x = Math.round(w * 0.02); x < Math.round(w * 0.98); x++) {
+            const idx = y * w + x;
+            if (!mask[idx] || visited[idx]) continue;
+            let minX = x, maxX = x, minY = y, maxY = y, area = 0;
+            stack.length = 0;
+            stack.push(idx);
+            visited[idx] = 1;
+            while (stack.length) {
+              const cur = stack.pop();
+              const cx = cur % w;
+              const cy = Math.floor(cur / w);
+              area += 1;
+              if (cx < minX) minX = cx;
+              if (cx > maxX) maxX = cx;
+              if (cy < minY) minY = cy;
+              if (cy > maxY) maxY = cy;
+              const neighbors = [
+                [cx - 1, cy],
+                [cx + 1, cy],
+                [cx, cy - 1],
+                [cx, cy + 1]
+              ];
+              for (const [nx, ny] of neighbors) {
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                const n = ny * w + nx;
+                if (visited[n] || !mask[n]) continue;
+                visited[n] = 1;
+                stack.push(n);
+              }
+            }
+            const rectW = maxX - minX + 1;
+            const rectH = maxY - minY + 1;
+            const ratio = rectW / rectH;
+            const squareBias = 1 - Math.min(1, Math.abs(1 - ratio));
+            if (area > 900 && rectW > 28 && rectH > 28 && ratio > 0.3 && ratio < 2.5) {
+              pushRect({ x: minX, y: minY, width: rectW, height: rectH, area: area + Math.round(squareBias * 1000) });
+            }
+          }
+        }
+      }
+      rects.sort((a, b) => b.area - a.area);
+      return rects.slice(0, 10);
+    }
+
+    function findTextureRects(sourceCanvas) {
+      const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+      const { width: w, height: h } = sourceCanvas;
+      const { data } = ctx.getImageData(0, 0, w, h);
+      const gray = new Uint8Array(w * h);
+      for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+        gray[p] = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+      }
+      const sizes = [72, 96, 120, 144, 168, 192, 224];
+      const candidates = [];
+      for (const size of sizes) {
+        const step = Math.max(12, Math.round(size / 4));
+        for (let y = 0; y + size <= h; y += step) {
+          for (let x = 0; x + size <= w; x += step) {
+            let sum = 0;
+            let edge = 0;
+            for (let yy = y; yy < y + size; yy += 2) {
+              for (let xx = x; xx < x + size; xx += 2) {
+                const idx = yy * w + xx;
+                const v = gray[idx];
+                sum += v;
+                const right = gray[idx + 1] ?? v;
+                const down = gray[idx + w] ?? v;
+                edge += Math.abs(v - right) + Math.abs(v - down);
+              }
+            }
+            const pixels = Math.max(1, Math.floor(size / 2) * Math.floor(size / 2));
+            const mean = sum / pixels;
+            const score = edge * 2 + Math.abs(mean - 128);
+            if (score > 5000) candidates.push({ x, y, width: size, height: size, score });
+          }
+        }
+      }
+      candidates.sort((a, b) => b.score - a.score);
+      return candidates.slice(0, 6);
+    }
+
+    function cropCanvas(sourceCanvas, region) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const w = sourceCanvas.width;
+      const h = sourceCanvas.height;
+      let sx = 0, sy = 0, sw = w, sh = h;
+      if (region === 'center') {
+        sx = Math.round(w * 0.18);
+        sy = Math.round(h * 0.18);
+        sw = Math.round(w * 0.64);
+        sh = Math.round(h * 0.64);
+      } else if (region === 'left-bottom') {
+        sx = 0;
+        sy = Math.round(h * 0.35);
+        sw = Math.round(w * 0.55);
+        sh = Math.round(h * 0.45);
+      } else if (region === 'right-bottom') {
+        sx = Math.round(w * 0.45);
+        sy = Math.round(h * 0.35);
+        sw = Math.round(w * 0.55);
+        sh = Math.round(h * 0.45);
+      } else if (region === 'top-left') {
+        sx = 0;
+        sy = 0;
+        sw = Math.round(w * 0.55);
+        sh = Math.round(h * 0.5);
+      } else if (region === 'top-right') {
+        sx = Math.round(w * 0.45);
+        sy = 0;
+        sw = Math.round(w * 0.55);
+        sh = Math.round(h * 0.5);
+      } else if (region === 'box-band') {
+        sx = Math.round(w * 0.05);
+        sy = Math.round(h * 0.60);
+        sw = Math.round(w * 0.52);
+        sh = Math.round(h * 0.28);
+      } else if (region === 'box-band-tight') {
+        sx = Math.round(w * 0.08);
+        sy = Math.round(h * 0.64);
+        sw = Math.round(w * 0.44);
+        sh = Math.round(h * 0.22);
+      }
+      canvas.width = Math.max(1, sw);
+      canvas.height = Math.max(1, sh);
+      ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      return canvas;
+    }
+
+    function createProcessedCanvas(sourceCanvas, mode) {
+      const canvas = document.createElement('canvas');
+      canvas.width = sourceCanvas.width;
+      canvas.height = sourceCanvas.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const imageData = sourceCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+      const data = imageData.data;
+      if (mode === 'gray' || mode === 'threshold' || mode === 'invert' || mode === 'threshold2') {
+        for (let i = 0; i < data.length; i += 4) {
+          const y = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+          let v = y;
+          if (mode === 'threshold') v = y > 160 ? 255 : 0;
+          if (mode === 'invert') v = y > 160 ? 0 : 255;
+          if (mode === 'threshold2') v = y > 128 ? 255 : 0;
+          data[i] = data[i + 1] = data[i + 2] = v;
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+      return canvas;
+    }
+
+    function adaptiveThresholdCanvas(sourceCanvas, radius = 8, offset = 12) {
+      const canvas = document.createElement('canvas');
+      canvas.width = sourceCanvas.width;
+      canvas.height = sourceCanvas.height;
+      const srcCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+      const dstCtx = canvas.getContext('2d', { willReadFrequently: true });
+      const { width: w, height: h } = sourceCanvas;
+      const imageData = srcCtx.getImageData(0, 0, w, h);
+      const data = imageData.data;
+      const gray = new Uint8Array(w * h);
+      for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+        gray[p] = Math.round(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+      }
+      const integral = new Float64Array((w + 1) * (h + 1));
+      for (let y = 1; y <= h; y++) {
+        let row = 0;
+        for (let x = 1; x <= w; x++) {
+          row += gray[(y - 1) * w + (x - 1)];
+          integral[y * (w + 1) + x] = integral[(y - 1) * (w + 1) + x] + row;
+        }
+      }
+      const out = dstCtx.createImageData(w, h);
+      for (let y = 0; y < h; y++) {
+        const y0 = Math.max(0, y - radius);
+        const y1 = Math.min(h - 1, y + radius);
+        for (let x = 0; x < w; x++) {
+          const x0 = Math.max(0, x - radius);
+          const x1 = Math.min(w - 1, x + radius);
+          const A = integral[y0 * (w + 1) + x0];
+          const B = integral[y0 * (w + 1) + (x1 + 1)];
+          const C = integral[(y1 + 1) * (w + 1) + x0];
+          const D = integral[(y1 + 1) * (w + 1) + (x1 + 1)];
+          const count = (x1 - x0 + 1) * (y1 - y0 + 1);
+          const mean = (D - B - C + A) / count;
+          const idx = y * w + x;
+          const v = gray[idx] < mean - offset ? 0 : 255;
+          const j = idx * 4;
+          out.data[j] = out.data[j + 1] = out.data[j + 2] = v;
+          out.data[j + 3] = 255;
+        }
+      }
+      dstCtx.putImageData(out, 0, 0);
+      return canvas;
+    }
+
+    function setView(name) {
+      if (name !== 'add') stopScan();
+      Object.entries(els.views).forEach(([key, node]) => {
+        node.classList.toggle('hidden', key !== name);
+      });
+      els.viewButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === name));
+      if (name === 'add') focusFormForNew();
+    }
+
+    function renderToday() {
+      const d = new Date();
+      els.todayText.textContent = `오늘 ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+
+    function renderStats() {
+      const items = state.inventory.map(it => ({ ...it, calc: calc(it) }));
+      const active = items.filter(it => !it.archived);
+      const inUse = active.filter(it => it.calc.status === 'in_use').length;
+      const shelfWarning = active.filter(it => it.calc.status === 'shelf_warning').length;
+      const expired = active.filter(it => it.calc.status === 'expired').length;
+      const ready = active.filter(it => it.calc.status === 'ready').length;
+      const currentUse = active.find(it => it.openedAt && it.calc.status !== 'archived');
+      const stats = [
+        { label: '전체 재고', value: active.length, hint: '폐기 제외 기준', color: 'var(--primary)', ratio: 100 },
+        { label: '미개봉', value: ready, hint: '바로 사용할 수 있는 재고', color: '#0ea5e9', ratio: active.length ? (ready / active.length) * 100 : 0 },
+        { label: '유효기간 임박', value: shelfWarning, hint: '보관 유효기간 기준', color: 'var(--orange)', ratio: active.length ? (shelfWarning / active.length) * 100 : 0 },
+        { label: '만료', value: expired, hint: '즉시 폐기/교체 확인', color: 'var(--red)', ratio: active.length ? (expired / active.length) * 100 : 0 }
+      ];
+      els.statsRow.innerHTML = stats.map(s => `
+        <div class="stat">
+          <div class="label">${s.label}</div>
+          <div class="value">${s.value}</div>
+          <div class="hint">${s.hint}</div>
+          <div class="bar"><span style="width:${Math.min(100, s.ratio)}%; background:${s.color};"></span></div>
+        </div>
+      `).join('');
+
+      if (currentUse) {
+        const type = sensorTypeById(currentUse.typeId);
+        const c = currentUse.calc;
+        const activeCard = `
+          <div class="panel section" style="box-shadow:none;">
+            <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <strong>현재 사용중 센서</strong>
+              <span class="badge">D-${c.wearRemaining != null ? c.wearRemaining : '-'}</span>
+            </div>
+            <div class="item" style="margin:0; background:#f8fafc;">
+              <div class="name">${escapeHtml(type?.name || '알 수 없음')}</div>
+              <div class="meta">LOT ${escapeHtml(currentUse.lot || '-')} · 개봉일 ${fmtDate(currentUse.openedAt)} · 종료일 ${fmtDate(c.wearEnd)}</div>
+              <div class="stack" style="margin-top:6px;">
+                <span class="status in_use">사용중</span>
+                ${c.wearExpired ? `<span class="status expired">사용기간 만료</span>` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+        const host = els.statsRow.parentElement;
+        let existing = document.getElementById('currentUseCard');
+        if (existing) existing.remove();
+        const wrapper = document.createElement('div');
+        wrapper.id = 'currentUseCard';
+        wrapper.innerHTML = activeCard;
+        host.insertAdjacentElement('afterend', wrapper);
+      } else {
+        const existing = document.getElementById('currentUseCard');
+        if (existing) existing.remove();
+      }
+
+      const priority = items
+        .filter(it => !it.archived)
+        .sort((a, b) => compareItems(a, b, 'effectiveAsc'))
+        .slice(0, 8);
+      els.priorityCount.textContent = `${priority.length}개`;
+      els.priorityList.innerHTML = priority.length ? priority.map(renderMiniItem).join('') : emptyRow('등록된 재고가 없습니다.');
+
+      const typeCounts = state.sensorTypes.map(type => {
+        const list = items.filter(it => it.typeId === type.id && !it.archived);
+        return {
+          type,
+          count: list.length,
+          shelfWarning: list.filter(it => it.calc.status === 'shelf_warning').length,
+          wearCount: list.filter(it => it.openedAt && it.calc.status === 'in_use').length
+        };
+      });
+      els.typeCount.textContent = `${typeCounts.length}종`;
+      els.typeSummary.innerHTML = typeCounts.length ? typeCounts.map(({ type, count, shelfWarning, wearCount }) => `
+        <div class="item" style="grid-template-columns: 1fr auto; align-items: center;">
+          <div>
+            <div class="name">${escapeHtml(type.name)}</div>
+            <div class="meta">사용기간 ${type.wearDays}일 · 유효기간 임박 ${shelfWarning}개 · 사용중 ${wearCount}개</div>
+          </div>
+          <div class="badge">${count}개</div>
+        </div>
+      `).join('') : emptyRow('센서 종류가 없습니다.');
+    }
+
+    function emptyRow(text) {
+      return `<div class="item" style="color:var(--muted);">${escapeHtml(text)}</div>`;
+    }
+
+    function renderStatusTags(calcInfo) {
+      const tags = [];
+      if (calcInfo.shelfExpired) tags.push(`<span class="status expired">유효기간 만료</span>`);
+      else if (calcInfo.shelfWarning) tags.push(`<span class="status shelf_warning">유효기간 임박</span>`);
+      if (calcInfo.wearExpired) tags.push(`<span class="status expired">사용기간 만료</span>`);
+      if (!tags.length) tags.push(`<span class="status ${calcInfo.status}">${statusLabel(calcInfo.status)}</span>`);
+      return tags.join(' ');
+    }
+
+    function renderMiniItem(item) {
+      const c = item.calc;
+      return `
+        <div class="item" style="grid-template-columns: 1fr auto; align-items: center;">
+          <div>
+            <div class="name">${escapeHtml(sensorTypeById(item.typeId)?.name || '알 수 없음')}</div>
+            <div class="meta">
+              ${escapeHtml(item.lot || '-')}
+              · 보관 ${fmtDate(item.expiry)}${c.shelfRemaining != null ? ` (D-${c.shelfRemaining})` : ''}
+              ${item.openedAt ? ` · 사용 ${fmtDate(c.wearEnd)}${c.wearRemaining != null ? ` (D-${c.wearRemaining})` : ''}` : ''}
+            </div>
+          </div>
+          <span class="status ${c.status}">${statusLabel(c.status)}</span>
+        </div>
+      `;
+    }
+
+    function compareItems(a, b, sortBy) {
+      const ca = a.calc || calc(a);
+      const cb = b.calc || calc(b);
+      if (sortBy === 'openedAsc') {
+        const ax = a.openedAt || '9999-12-31';
+        const bx = b.openedAt || '9999-12-31';
+        if (ax !== bx) return ax.localeCompare(bx);
+        return (ca.effective || '9999-12-31').localeCompare(cb.effective || '9999-12-31');
+      }
+      if (sortBy === 'createdDesc') {
+        return (b.createdAt || '').localeCompare(a.createdAt || '');
+      }
+      if ((ca.effective || '9999-12-31') !== (cb.effective || '9999-12-31')) {
+        return (ca.effective || '9999-12-31').localeCompare(cb.effective || '9999-12-31');
+      }
+      if ((a.openedAt || '') !== (b.openedAt || '')) {
+        return (a.openedAt || '9999-12-31').localeCompare(b.openedAt || '9999-12-31');
+      }
+      return (a.createdAt || '').localeCompare(b.createdAt || '');
+    }
+
+    function renderInventory() {
+      const typeFilter = els.filterType.value;
+      const statusFilter = els.filterStatus.value;
+      const sortBy = els.sortBy.value;
+      const list = state.inventory
+        .map(it => ({ ...it, calc: calc(it) }))
+        .filter(it => !typeFilter || it.typeId === typeFilter)
+        .filter(it => !statusFilter || it.calc.status === statusFilter)
+        .sort((a, b) => compareItems(a, b, sortBy));
+
+      els.inventoryList.innerHTML = list.length ? list.map(item => {
+        const type = sensorTypeById(item.typeId);
+        const tags = renderStatusTags(item.calc);
+        return `
+          <div class="item row">
+            <div>
+              <div class="name">${escapeHtml(type?.name || '알 수 없음')}</div>
+              <div class="meta">${escapeHtml(item.lot || '-')} · ${type ? `${type.wearDays}일 사용` : '사용기간 없음'}</div>
+              <div class="stack" style="margin-top:6px;">${tags}</div>
+            </div>
+            <div>
+              <div>${fmtDate(item.expiry)}</div>
+              <div class="meta">보관 ${item.calc.shelfRemaining != null ? `D-${item.calc.shelfRemaining}` : '-'}</div>
+            </div>
+            <div>
+              <div>${fmtDate(item.calc.wearEnd)}</div>
+              <div class="meta">사용 ${item.openedAt && item.calc.wearRemaining != null ? `D-${item.calc.wearRemaining}` : '-'}</div>
+            </div>
+            <div><span class="status ${item.calc.status}">${statusLabel(item.calc.status)}</span></div>
+            <div class="stack">
+              <button class="btn small" data-action="detail" data-id="${item.id}">상세</button>
+              <button class="btn small" data-action="edit" data-id="${item.id}">수정</button>
+            </div>
+          </div>
+        `;
+      }).join('') : emptyRow('조건에 맞는 재고가 없습니다.');
+    }
+
+    function renderTypeSelects() {
+      const opts = state.sensorTypes.map(t => `<option value="${escapeAttr(t.id)}">${escapeHtml(t.name)} · ${t.wearDays}일</option>`).join('');
+      els.formType.innerHTML = `<option value="">선택</option>${opts}`;
+      els.filterType.innerHTML = `<option value="">센서 종류 전체</option>${opts}`;
+    }
+
+    function renderSettings() {
+      els.alertDays.value = state.settings.alertDays ?? 30;
+      els.sensorTypeTotal.textContent = `${state.sensorTypes.length}종`;
+      els.typeList.innerHTML = state.sensorTypes.map(type => `
+        <div class="item" style="grid-template-columns: 1fr auto; align-items: center;">
+          <div>
+            <div class="name"><span class="badge" style="background:${type.color}22; color:${type.color}; border-color:${type.color}33; margin-right:6px;">■</span>${escapeHtml(type.name)}</div>
+            <div class="meta">사용기간 ${type.wearDays}일 · GTIN ${escapeHtml(type.gtin || '-')} · 모델 ${escapeHtml(type.model || '-')}</div>
+          </div>
+          <div class="stack">
+            <button class="btn small" data-edit-type="${type.id}">수정</button>
+            <button class="btn small danger" data-remove-type="${type.id}">삭제</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderDashboard() {
+      renderToday();
+      renderStats();
+      renderInventory();
+      renderSettings();
+      renderTypeSelects();
+    }
+
+    function focusFormForNew() {
+      els.formTitle.textContent = '재고 추가';
+      els.formModeBadge.textContent = '신규 등록';
+      els.editingId.value = '';
+      els.formSerial.value = '';
+      els.inventoryForm.reset();
+      els.formExpiry.value = todayISO();
+      els.formOpenedAt.value = '';
+      els.formType.value = state.sensorTypes[0]?.id || '';
+      els.scanStatus.textContent = '카메라로 찍은 사진이나 이미지 파일을 넣으면 인식합니다.';
+      els.scanImagePreview.classList.add('hidden');
+      els.scanImagePreview.removeAttribute('src');
+      els.gs1RawInput.value = '';
+    }
+
+    function resetTypeForm() {
+      els.editingTypeId.value = '';
+      els.typeForm.reset();
+      els.typeColor.value = '#64748b';
+      els.typeSubmitBtn.textContent = '센서 종류 추가';
+      els.cancelTypeEdit.disabled = true;
+    }
+
+    function openTypeEdit(type) {
+      els.editingTypeId.value = type.id;
+      els.typeName.value = type.name || '';
+      els.typeWearDays.value = type.wearDays || 0;
+      els.typeColor.value = type.color || '#64748b';
+      els.typeGtin.value = type.gtin || '';
+      els.typeModel.value = type.model || '';
+      els.typeSubmitBtn.textContent = '센서 종류 저장';
+      els.cancelTypeEdit.disabled = false;
+    }
+
+    function openEdit(item) {
+      const calcItem = calc(item);
+      setView('add');
+      els.formTitle.textContent = '재고 수정';
+      els.formModeBadge.textContent = '수정 모드';
+      els.editingId.value = item.id;
+      els.formType.value = item.typeId;
+      els.formLot.value = item.lot || '';
+      els.formExpiry.value = item.expiry || '';
+      els.formOpenedAt.value = item.openedAt || '';
+      els.formSerial.value = item.serial || '';
+      els.formNotes.value = item.notes || '';
+      if (!item.openedAt && calcItem.status === 'in_use') {
+        els.formOpenedAt.value = todayISO();
+      }
+    }
+
+    function showDetail(id) {
+      const item = state.inventory.find(x => x.id === id);
+      if (!item) return;
+      selectedId = id;
+      const c = calc(item);
+      const type = sensorTypeById(item.typeId);
+      els.detailTitle.textContent = type?.name || '상세';
+      els.detailBody.innerHTML = `
+        <div class="kv"><div class="k">센서 종류</div><div class="v">${escapeHtml(type?.name || '-')}</div></div>
+        <div class="kv"><div class="k">일련번호</div><div class="v">${escapeHtml(item.serial || '-')}</div></div>
+        <div class="kv"><div class="k">LOT</div><div class="v">${escapeHtml(item.lot || '-')}</div></div>
+        <div class="kv"><div class="k">보관 유효기간</div><div class="v">${fmtDate(item.expiry)}${c.shelfRemaining != null ? ` <span class="meta">(D-${c.shelfRemaining})</span>` : ''}</div></div>
+        <div class="kv"><div class="k">개봉일</div><div class="v">${fmtDate(item.openedAt)}</div></div>
+        <div class="kv"><div class="k">사용기간</div><div class="v">${type?.wearDays ?? '-'}일</div></div>
+        <div class="kv"><div class="k">사용기간 종료일</div><div class="v">${fmtDate(c.wearEnd)}${c.wearRemaining != null ? ` <span class="meta">(D-${c.wearRemaining})</span>` : ''}</div></div>
+        <div class="kv"><div class="k">실효 종료일</div><div class="v">${fmtDate(c.effective)}</div></div>
+        <div class="kv"><div class="k">상태</div><div class="v"><span class="status ${c.status}">${statusLabel(c.status)}</span></div></div>
+        <div class="kv"><div class="k">경고</div><div class="v">${renderStatusTags(c)}</div></div>
+        <div class="kv"><div class="k">메모</div><div class="v">${escapeHtml(item.notes || '-')}</div></div>
+      `;
+      els.detailEdit.onclick = () => { els.detailDialog.close(); openEdit(item); };
+      els.detailUseStart.onclick = () => { updateItem(id, { openedAt: todayISO() }); els.detailDialog.close(); };
+      els.detailUseEnd.onclick = () => { updateItem(id, { archived: true }); els.detailDialog.close(); };
+      els.detailArchive.onclick = () => { updateItem(id, { archived: true }); els.detailDialog.close(); };
+      els.detailDelete.onclick = () => deleteItem(id);
+      els.detailDialog.showModal();
+    }
+
+    function updateItem(id, patch) {
+      const idx = state.inventory.findIndex(x => x.id === id);
+      if (idx < 0) return;
+      state.inventory[idx] = { ...state.inventory[idx], ...patch };
+      saveState();
+      rerender();
+    }
+
+    function deleteItem(id) {
+      const item = state.inventory.find(x => x.id === id);
+      if (!item) return;
+      const type = sensorTypeById(item.typeId);
+      const ok = confirm(
+        `정말 삭제할까요?\n\n센서: ${type?.name || item.typeId}\nLOT: ${item.lot || '-'}\n일련번호: ${item.serial || '-'}\n\n이 동작은 되돌릴 수 없습니다.`
+      );
+      if (!ok) return;
+      state.inventory = state.inventory.filter(x => x.id !== id);
+      saveState();
+      selectedId = null;
+      rerender();
+      try { els.detailDialog.close(); } catch {}
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+    function escapeAttr(s) {
+      return escapeHtml(s).replaceAll('`', '&#96;');
+    }
+
+    function rerender() {
+      renderDashboard();
+      renderInventory();
+      renderSettings();
+      renderTypeSelects();
+    }
+
+    els.viewButtons.forEach(btn => btn.addEventListener('click', () => setView(btn.dataset.view)));
+    els.quickAdd.addEventListener('click', () => setView('add'));
+    els.cancelEdit.addEventListener('click', () => setView('inventory'));
+    els.scanCaptureInput.addEventListener('change', (e) => scanImageFile(e.target.files?.[0]));
+    els.scanImageInput.addEventListener('change', (e) => scanImageFile(e.target.files?.[0]));
+    els.applyGs1Raw.addEventListener('click', applyGs1RawInput);
+    els.clearGs1Raw.addEventListener('click', () => {
+      els.gs1RawInput.value = '';
+      setScanStatus('GS1 원문 입력을 지웠습니다.', 'info');
+    });
+    els.filterType.addEventListener('change', renderInventory);
+    els.filterStatus.addEventListener('change', renderInventory);
+    els.sortBy.addEventListener('change', renderInventory);
+
+    els.inventoryList.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      const item = state.inventory.find(x => x.id === id);
+      if (!item) return;
+      if (btn.dataset.action === 'detail') showDetail(id);
+      if (btn.dataset.action === 'edit') openEdit(item);
+    });
+
+    els.inventoryForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const id = els.editingId.value || uid('inv');
+      const typeId = els.formType.value;
+      const serial = els.formSerial.value.trim();
+      const lot = els.formLot.value.trim();
+      const expiry = els.formExpiry.value;
+      const duplicate = findDuplicateInventory(typeId, serial, lot, expiry, id);
+      if (duplicate) {
+        alert(`중복 재고가 있습니다. 일련번호 또는 조합이 이미 등록되어 있습니다.\n센서: ${sensorTypeById(duplicate.typeId)?.name || duplicate.typeId}\nLOT: ${duplicate.lot || '-'}\n일련번호: ${duplicate.serial || '-'}`);
+        return;
+      }
+      const payload = {
+        id,
+        typeId,
+        serial,
+        lot,
+        expiry,
+        openedAt: els.formOpenedAt.value || '',
+        notes: els.formNotes.value.trim(),
+        archived: false,
+        createdAt: new Date().toISOString()
+      };
+      const idx = state.inventory.findIndex(x => x.id === id);
+      if (idx >= 0) state.inventory[idx] = { ...state.inventory[idx], ...payload };
+      else state.inventory.unshift(payload);
+      saveState();
+      focusFormForNew();
+      setView('inventory');
+      rerender();
+    });
+
+    els.typeForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = els.typeName.value.trim();
+      const wearDays = Number(els.typeWearDays.value);
+      if (!name || !wearDays) return;
+      const id = els.editingTypeId.value || uid('type');
+      const payload = {
+        id,
+        name,
+        wearDays,
+        color: els.typeColor.value || '#64748b',
+        gtin: els.typeGtin.value.trim(),
+        model: els.typeModel.value.trim()
+      };
+      const idx = state.sensorTypes.findIndex(t => t.id === id);
+      if (idx >= 0) state.sensorTypes[idx] = payload;
+      else state.sensorTypes.push(payload);
+      saveState();
+      resetTypeForm();
+      rerender();
+    });
+
+    els.cancelTypeEdit.addEventListener('click', resetTypeForm);
+
+    els.typeList.addEventListener('click', (e) => {
+      const editBtn = e.target.closest('button[data-edit-type]');
+      if (editBtn) {
+        const type = state.sensorTypes.find(t => t.id === editBtn.dataset.editType);
+        if (type) openTypeEdit(type);
+        return;
+      }
+      const btn = e.target.closest('button[data-remove-type]');
+      if (!btn) return;
+      const id = btn.dataset.removeType;
+      if (state.inventory.some(it => it.typeId === id)) {
+        alert('이 센서 종류를 참조하는 재고가 있어 삭제할 수 없습니다.');
+        return;
+      }
+      state.sensorTypes = state.sensorTypes.filter(t => t.id !== id);
+      saveState();
+      rerender();
+    });
+
+    els.saveAlertDays.addEventListener('click', () => {
+      const v = Math.max(1, Number(els.alertDays.value || 30));
+      state.settings.alertDays = v;
+      saveState();
+      rerender();
+    });
+
+    els.exportData.addEventListener('click', () => {
+      const data = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        ...state
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cgmmgr-backup-${todayISO()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    els.importFile.addEventListener('change', async () => {
+      const file = els.importFile.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const parsed = JSON.parse(text);
+        state = {
+          sensorTypes: Array.isArray(parsed.sensorTypes) && parsed.sensorTypes.length ? parsed.sensorTypes : structuredClone(DEFAULT_SENSOR_TYPES),
+          inventory: Array.isArray(parsed.inventory) ? parsed.inventory : [],
+          settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) }
+        };
+        saveState();
+        rerender();
+        alert('복원이 완료되었습니다.');
+      } catch (err) {
+        alert('JSON 파일을 읽을 수 없습니다.');
+      } finally {
+        els.importFile.value = '';
+      }
+    });
+
+    function seedFormDefaults() {
+      els.formType.value = state.sensorTypes[0]?.id || '';
+      els.formExpiry.value = todayISO();
+    }
+
+    if (!state.sensorTypes.length) state.sensorTypes = structuredClone(DEFAULT_SENSOR_TYPES);
+    saveState();
+    resetTypeForm();
+    seedFormDefaults();
+    rerender();
+    setView('dashboard');
+    renderToday();
+  </script>
+</body>
+</html>
