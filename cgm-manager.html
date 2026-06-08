@@ -228,6 +228,7 @@
       <button class="active" data-view="dashboard">대시보드</button>
       <button data-view="inventory">재고 목록</button>
       <button data-view="add">재고 추가</button>
+      <button data-view="worklog">작업기록</button>
       <button data-view="settings">설정</button>
     </div>
 
@@ -349,6 +350,50 @@
         </div>
       </section>
 
+      <section id="view-worklog" class="panel section hidden">
+        <div class="split">
+          <div class="panel section" style="box-shadow:none;">
+            <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <strong>작업기록 작성</strong>
+              <span class="badge" id="workLogModeBadge">새 기록</span>
+            </div>
+            <div class="grid" style="gap:10px; margin-bottom:12px;">
+              <div class="mini">`docs/CHANGELOG.md` 기준으로 프로그램 수정 내역을 표시합니다.</div>
+              <div class="stack">
+                <span class="badge" id="changelogStatus">불러오는 중</span>
+                <button type="button" class="btn" id="reloadChangelog">새로고침</button>
+              </div>
+            </div>
+            <form id="workLogForm" class="grid hidden" style="gap:10px;">
+              <input type="hidden" id="workLogEditingId" />
+              <label class="grid" style="gap:6px;">
+                <span class="mini">작업일자</span>
+                <input id="workLogDate" type="date" required />
+              </label>
+              <label class="grid" style="gap:6px;">
+                <span class="mini">제목</span>
+                <input id="workLogTitle" maxlength="120" placeholder="작업 제목" required />
+              </label>
+              <label class="grid" style="gap:6px;">
+                <span class="mini">내용</span>
+                <textarea id="workLogContent" rows="8" placeholder="작업 내용을 기록하세요." required></textarea>
+              </label>
+              <div class="form-actions">
+                <button type="button" class="btn" id="workLogCancel">취소</button>
+                <button type="submit" class="btn primary" id="workLogSubmit">저장</button>
+              </div>
+            </form>
+          </div>
+          <div class="panel section" style="box-shadow:none;">
+            <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <strong>기록 목록</strong>
+              <span class="badge" id="workLogCount"></span>
+            </div>
+            <div class="list" id="workLogList"></div>
+          </div>
+        </div>
+      </section>
+
       <section id="view-settings" class="panel section hidden">
         <div class="split">
           <div class="grid" style="gap:12px;">
@@ -459,6 +504,7 @@
         dashboard: document.getElementById('view-dashboard'),
         inventory: document.getElementById('view-inventory'),
         add: document.getElementById('view-add'),
+        worklog: document.getElementById('view-worklog'),
         settings: document.getElementById('view-settings')
       },
       editingId: document.getElementById('editingId'),
@@ -479,6 +525,18 @@
       gs1RawInput: document.getElementById('gs1RawInput'),
       applyGs1Raw: document.getElementById('applyGs1Raw'),
       clearGs1Raw: document.getElementById('clearGs1Raw'),
+      workLogForm: document.getElementById('workLogForm'),
+      workLogEditingId: document.getElementById('workLogEditingId'),
+      workLogDate: document.getElementById('workLogDate'),
+      workLogTitle: document.getElementById('workLogTitle'),
+      workLogContent: document.getElementById('workLogContent'),
+      workLogModeBadge: document.getElementById('workLogModeBadge'),
+      workLogCancel: document.getElementById('workLogCancel'),
+      workLogSubmit: document.getElementById('workLogSubmit'),
+      changelogStatus: document.getElementById('changelogStatus'),
+      reloadChangelog: document.getElementById('reloadChangelog'),
+      workLogCount: document.getElementById('workLogCount'),
+      workLogList: document.getElementById('workLogList'),
       alertDays: document.getElementById('alertDays'),
       saveAlertDays: document.getElementById('saveAlertDays'),
       exportData: document.getElementById('exportData'),
@@ -509,6 +567,7 @@
     let selectedId = null;
     let scanReader = null;
     let barcodeDetector = null;
+    let changelogEntries = [];
 
     function loadState() {
       try {
@@ -517,6 +576,7 @@
           return {
             sensorTypes: normalizeSensorTypes(structuredClone(DEFAULT_SENSOR_TYPES)),
             inventory: [],
+            workLogs: [],
             settings: { ...DEFAULT_SETTINGS }
           };
         }
@@ -526,12 +586,14 @@
             Array.isArray(parsed.sensorTypes) && parsed.sensorTypes.length ? parsed.sensorTypes : structuredClone(DEFAULT_SENSOR_TYPES)
           ),
           inventory: Array.isArray(parsed.inventory) ? parsed.inventory : [],
+          workLogs: Array.isArray(parsed.workLogs) ? parsed.workLogs : [],
           settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) }
         };
       } catch {
         return {
           sensorTypes: normalizeSensorTypes(structuredClone(DEFAULT_SENSOR_TYPES)),
           inventory: [],
+          workLogs: [],
           settings: { ...DEFAULT_SETTINGS }
         };
       }
@@ -1097,7 +1159,7 @@
         els.scanImagePreview.src = objectUrl;
         els.scanImagePreview.classList.remove('hidden');
         setScanStatus('이미지에서 인식 중입니다.', 'busy');
-        const result = await decodeCanvasWithFallbacks(reader, canvas, (index, total, label) => {
+        const result = await decodeCanvasWithHybridFallbacks(reader, canvas, els.formType.value, (index, total, label) => {
           setScanStatus(`이미지에서 인식 중입니다. ${index}/${total}${label ? ` - ${label}` : ''}`, 'busy');
         });
         applyScanResult(result.text);
@@ -1168,6 +1230,64 @@
         }
       }
       throw lastError || new Error('인식 실패');
+    }
+
+    function getScanProfile(typeId, baseCanvas) {
+      const normalized = String(typeId || '').trim();
+      if (normalized === 'caresens_air' || normalized === 'barogen_fit') return 'centered';
+      if (normalized === 'dexcom_g7') return 'dexcom_box';
+      return isLikelyDexcomBox(baseCanvas) ? 'dexcom_box' : 'centered';
+    }
+
+    async function decodeCanvasWithHybridFallbacks(reader, baseCanvas, typeId, progressCb) {
+      const attempts = [];
+      const dmRects = findDataMatrixRects(baseCanvas);
+      const centerCrop = cropCanvas(baseCanvas, 'center');
+      const boxCrop = cropCanvas(baseCanvas, 'box-band-tight');
+      const profile = getScanProfile(typeId, baseCanvas);
+
+      const centeredAttempts = [
+        ['original', baseCanvas],
+        ['center', centerCrop],
+        ['center-threshold', createProcessedCanvas(centerCrop, 'threshold')],
+        ['center-invert', createProcessedCanvas(centerCrop, 'invert')],
+        ['center-4x', scaleCanvas(centerCrop, 4)],
+        ['original-threshold', createProcessedCanvas(baseCanvas, 'threshold')]
+      ];
+      const dexcomAttempts = [
+        ['box-tight', boxCrop],
+        ['box-tight-threshold', createProcessedCanvas(boxCrop, 'threshold')],
+        ['box-tight-invert', createProcessedCanvas(boxCrop, 'invert')],
+        ['box-tight-4x', scaleCanvas(boxCrop, 4)]
+      ];
+
+      if (profile === 'dexcom_box') attempts.push(...dexcomAttempts, ...centeredAttempts);
+      else attempts.push(...centeredAttempts);
+
+      for (let i = 0; i < dmRects.length; i += 1) {
+        const cropped = cropRectCanvas(baseCanvas, dmRects[i], 18);
+        attempts.push([`dm-${i + 1}`, cropped]);
+        attempts.push([`dm-${i + 1}-threshold`, createProcessedCanvas(cropped, 'threshold')]);
+        attempts.push([`dm-${i + 1}-invert`, createProcessedCanvas(cropped, 'invert')]);
+        attempts.push([`dm-${i + 1}-4x`, scaleCanvas(cropped, 4)]);
+      }
+
+      let lastError = null;
+      const total = attempts.length;
+      let index = 0;
+      for (const [label, canvas] of attempts) {
+        index += 1;
+        try {
+          progressCb?.(index, total, label);
+          const decoded = await decodeCanvasWithReader(reader, canvas);
+          if (decoded?.text) return decoded;
+          const native = await detectWithBarcodeDetector(canvas);
+          if (native) return native;
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      throw lastError || new Error('scan failed');
     }
 
     async function decodeCanvasWithReader(reader, canvas) {
@@ -1381,6 +1501,27 @@
       }
       candidates.sort((a, b) => b.score - a.score);
       return candidates.slice(0, 6);
+    }
+
+    function isLikelyDexcomBox(sourceCanvas) {
+      const ctx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+      const { width: w, height: h } = sourceCanvas;
+      const sampleX = Math.round(w * 0.1);
+      const sampleY = Math.round(h * 0.15);
+      const sampleW = Math.max(1, Math.round(w * 0.75));
+      const sampleH = Math.max(1, Math.round(h * 0.7));
+      const { data } = ctx.getImageData(sampleX, sampleY, sampleW, sampleH);
+      let greenish = 0;
+      let dark = 0;
+      const pixels = Math.max(1, data.length / 4);
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        if (g > r + 18 && g > b + 10) greenish += 1;
+        if ((r + g + b) / 3 < 150) dark += 1;
+      }
+      return greenish / pixels > 0.18 && dark / pixels > 0.12;
     }
 
     function cropCanvas(sourceCanvas, region) {
@@ -1705,10 +1846,132 @@
       `).join('');
     }
 
+    function sortWorkLogs(list) {
+      return [...list].sort((a, b) => {
+        const dateCmp = String(b.date || '').localeCompare(String(a.date || ''));
+        if (dateCmp !== 0) return dateCmp;
+        return String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || ''));
+      });
+    }
+
+    function resetWorkLogForm() {
+      els.workLogEditingId.value = '';
+      els.workLogForm.reset();
+      els.workLogDate.value = todayISO();
+      els.workLogModeBadge.textContent = '새 기록';
+      els.workLogSubmit.textContent = '저장';
+    }
+
+    function openWorkLogEdit(id) {
+      const entry = state.workLogs.find(log => log.id === id);
+      if (!entry) return;
+      setView('worklog');
+      els.workLogEditingId.value = entry.id;
+      els.workLogDate.value = entry.date || todayISO();
+      els.workLogTitle.value = entry.title || '';
+      els.workLogContent.value = entry.content || '';
+      els.workLogModeBadge.textContent = '수정 중';
+      els.workLogSubmit.textContent = '수정 저장';
+    }
+
+    function deleteWorkLog(id) {
+      const entry = state.workLogs.find(log => log.id === id);
+      if (!entry) return;
+      const ok = confirm(`작업기록을 삭제할까요?\n\n일자: ${entry.date || '-'}\n제목: ${entry.title || '-'}`);
+      if (!ok) return;
+      state.workLogs = state.workLogs.filter(log => log.id !== id);
+      saveState();
+      if (els.workLogEditingId.value === id) resetWorkLogForm();
+      renderWorkLogs();
+    }
+
+    function renderWorkLogs() {
+      const logs = sortWorkLogs(state.workLogs || []);
+      els.workLogCount.textContent = `${logs.length}건`;
+      if (!logs.length) {
+        els.workLogList.innerHTML = emptyRow('등록된 작업기록이 없습니다.');
+        return;
+      }
+      els.workLogList.innerHTML = logs.map(entry => `
+        <div class="item" style="grid-template-columns: 1fr auto; align-items: start;">
+          <div>
+            <div class="name">${escapeHtml(entry.title || '(제목 없음)')}</div>
+            <div class="meta">${escapeHtml(entry.date || '-')} ${entry.updatedAt ? `쨌 수정 ${escapeHtml(String(entry.updatedAt).slice(0, 16).replace('T', ' '))}` : ''}</div>
+            <div style="margin-top:8px; white-space:pre-wrap; line-height:1.5;">${escapeHtml(entry.content || '')}</div>
+          </div>
+          <div class="stack">
+            <button class="btn small" type="button" data-worklog-action="edit" data-id="${escapeAttr(entry.id)}">수정</button>
+            <button class="btn small danger" type="button" data-worklog-action="delete" data-id="${escapeAttr(entry.id)}">삭제</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function parseChangelogMarkdown(markdown) {
+      const lines = String(markdown || '').split(/\r?\n/);
+      const entries = [];
+      let current = null;
+      for (const line of lines) {
+        if (line.startsWith('## ')) {
+          if (current) entries.push(current);
+          current = { title: line.slice(3).trim(), items: [] };
+          continue;
+        }
+        if (!current) continue;
+        if (line.startsWith('- ')) current.items.push(line.slice(2).trim());
+      }
+      if (current) entries.push(current);
+      return entries;
+    }
+
+    async function loadChangelog() {
+      els.changelogStatus.textContent = '불러오는 중';
+      try {
+        const response = await fetch(`docs/CHANGELOG.md?v=${encodeURIComponent(todayISO())}`, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const markdown = await response.text();
+        changelogEntries = parseChangelogMarkdown(markdown);
+        els.changelogStatus.textContent = '동기화 완료';
+      } catch {
+        changelogEntries = [];
+        els.changelogStatus.textContent = '불러오기 실패';
+      }
+      renderWorkLogs();
+    }
+
+    function resetWorkLogForm() {
+      if (els.workLogForm) els.workLogForm.reset();
+      if (els.workLogDate) els.workLogDate.value = todayISO();
+      if (els.workLogModeBadge) els.workLogModeBadge.textContent = 'CHANGELOG';
+      if (els.workLogSubmit) els.workLogSubmit.textContent = '저장';
+    }
+
+    function openWorkLogEdit() {}
+
+    function deleteWorkLog() {}
+
+    function renderWorkLogs() {
+      const logs = changelogEntries || [];
+      els.workLogCount.textContent = `${logs.length}건`;
+      if (!logs.length) {
+        els.workLogList.innerHTML = emptyRow('표시할 프로그램 작업내용이 없습니다.');
+        return;
+      }
+      els.workLogList.innerHTML = logs.map(entry => `
+        <div class="item" style="display:block;">
+          <div class="name">${escapeHtml(entry.title || '-')}</div>
+          <div style="margin-top:8px; display:grid; gap:6px;">
+            ${(entry.items || []).map(item => `<div class="meta">- ${escapeHtml(item)}</div>`).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
     function renderDashboard() {
       renderToday();
       renderStats();
       renderInventory();
+      renderWorkLogs();
       renderSettings();
       renderTypeSelects();
     }
@@ -1721,7 +1984,7 @@
       els.inventoryForm.reset();
       els.formExpiry.value = todayISO();
       els.formOpenedAt.value = '';
-      els.formType.value = state.sensorTypes[0]?.id || '';
+      els.formType.value = '';
       els.scanStatus.textContent = '카메라로 찍은 사진이나 이미지 파일을 넣으면 인식합니다.';
       els.scanImagePreview.classList.add('hidden');
       els.scanImagePreview.removeAttribute('src');
@@ -1830,6 +2093,7 @@
     function rerender() {
       renderDashboard();
       renderInventory();
+      renderWorkLogs();
       renderSettings();
       renderTypeSelects();
     }
@@ -1844,9 +2108,19 @@
       els.gs1RawInput.value = '';
       setScanStatus('GS1 원문 입력을 지웠습니다.', 'info');
     });
+    els.reloadChangelog.addEventListener('click', loadChangelog);
+    els.workLogCancel.addEventListener('click', resetWorkLogForm);
     els.filterType.addEventListener('change', renderInventory);
     els.filterStatus.addEventListener('change', renderInventory);
     els.sortBy.addEventListener('change', renderInventory);
+
+    els.workLogList.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-worklog-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      if (btn.dataset.worklogAction === 'edit') openWorkLogEdit(id);
+      if (btn.dataset.worklogAction === 'delete') deleteWorkLog(id);
+    });
 
     els.inventoryList.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-action]');
@@ -1888,6 +2162,33 @@
       focusFormForNew();
       setView('inventory');
       rerender();
+    });
+
+    els.workLogForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const id = els.workLogEditingId.value || uid('log');
+      const now = new Date().toISOString();
+      const payload = {
+        id,
+        date: els.workLogDate.value || todayISO(),
+        title: els.workLogTitle.value.trim(),
+        content: els.workLogContent.value.trim(),
+        createdAt: now,
+        updatedAt: now
+      };
+      const idx = state.workLogs.findIndex(log => log.id === id);
+      if (idx >= 0) {
+        state.workLogs[idx] = {
+          ...state.workLogs[idx],
+          ...payload,
+          createdAt: state.workLogs[idx].createdAt || now
+        };
+      } else {
+        state.workLogs.unshift(payload);
+      }
+      saveState();
+      resetWorkLogForm();
+      renderWorkLogs();
     });
 
     els.typeForm.addEventListener('submit', (e) => {
@@ -1964,9 +2265,11 @@
         state = {
           sensorTypes: Array.isArray(parsed.sensorTypes) && parsed.sensorTypes.length ? parsed.sensorTypes : structuredClone(DEFAULT_SENSOR_TYPES),
           inventory: Array.isArray(parsed.inventory) ? parsed.inventory : [],
+          workLogs: Array.isArray(parsed.workLogs) ? parsed.workLogs : [],
           settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) }
         };
         saveState();
+        resetWorkLogForm();
         rerender();
         alert('복원이 완료되었습니다.');
       } catch (err) {
@@ -1977,15 +2280,17 @@
     });
 
     function seedFormDefaults() {
-      els.formType.value = state.sensorTypes[0]?.id || '';
+      els.formType.value = '';
       els.formExpiry.value = todayISO();
     }
 
     if (!state.sensorTypes.length) state.sensorTypes = structuredClone(DEFAULT_SENSOR_TYPES);
     saveState();
     resetTypeForm();
+    resetWorkLogForm();
     seedFormDefaults();
     rerender();
+    loadChangelog();
     setView('dashboard');
     renderToday();
   </script>
