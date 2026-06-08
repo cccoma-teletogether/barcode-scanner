@@ -1159,7 +1159,9 @@
         const bitmap = await loadImageBitmap(file);
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        const maxSide = 1200;
+        // Keep near-original resolution for DataMatrix stills; small downscales
+        // noticeably reduce decode reliability on dense Dexcom box codes.
+        const maxSide = 2000;
         const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
         canvas.width = Math.max(1, Math.round(bitmap.width * scale));
         canvas.height = Math.max(1, Math.round(bitmap.height * scale));
