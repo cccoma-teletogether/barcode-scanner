@@ -1255,6 +1255,7 @@
       const boxCrop = cropCanvas(baseCanvas, 'box-band-tight');
       const dexcomWideCrop = cropCanvas(baseCanvas, 'dexcom-band');
       const screenShotCrop = cropCanvas(baseCanvas, 'screen-code');
+      const closeupCrop = cropCanvas(baseCanvas, 'closeup-code');
       const profile = getScanProfile(typeId, baseCanvas);
 
       const centeredAttempts = [
@@ -1278,6 +1279,11 @@
         ['screen-code-threshold2', createProcessedCanvas(screenShotCrop, 'threshold2')],
         ['screen-code-adaptive', adaptiveThresholdCanvas(screenShotCrop, 10, 10)],
         ['screen-code-4x', scaleCanvas(screenShotCrop, 4)],
+        ['closeup-code', closeupCrop],
+        ['closeup-code-gray', createProcessedCanvas(closeupCrop, 'gray')],
+        ['closeup-code-threshold2', createProcessedCanvas(closeupCrop, 'threshold2')],
+        ['closeup-code-adaptive', adaptiveThresholdCanvas(closeupCrop, 10, 10)],
+        ['closeup-code-4x', scaleCanvas(closeupCrop, 4)],
         ['original-threshold', createProcessedCanvas(baseCanvas, 'threshold')]
       ];
       const dexcomAttempts = [
@@ -1620,6 +1626,11 @@
         sy = Math.round(h * 0.36);
         sw = Math.round(w * 0.62);
         sh = Math.round(h * 0.42);
+      } else if (region === 'closeup-code') {
+        sx = Math.round(w * 0.18);
+        sy = Math.round(h * 0.40);
+        sw = Math.round(w * 0.68);
+        sh = Math.round(h * 0.46);
       }
       canvas.width = Math.max(1, sw);
       canvas.height = Math.max(1, sh);
