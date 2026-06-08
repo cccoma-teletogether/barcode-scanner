@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#667eea">
+    <meta name="description" content="웹 카메라를 사용하여 DataMatrix와 QR 코드를 실시간으로 스캔하는 PWA 앱">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="바코드 스캐너">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <!-- PWA 매니페스트 -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- iOS 아이콘 -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%23667eea' width='180' height='180' rx='40'/><text x='90' y='110' font-size='80' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'>📱</text></svg>">
+    
+    <!-- 파비콘 -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect fill='%23667eea' width='64' height='64'/><text x='32' y='45' font-size='40' font-weight='bold' text-anchor='middle' fill='white' font-family='Arial'>📱</text></svg>">
+    
+    <title>DataMatrix & QR 코드 스캐너</title>
+    <script src="https://cdn.jsdelivr.net/npm/zxing-wasm@0.2.4/dist/iife/reader/index.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            height: 100%;
+            max-height: 100vh;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 5px;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+
+        .install-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            display: none;
+            flex-shrink: 0;
+        }
+
+        .install-banner.show {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .install-banner button {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .control-panel {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+
+        button {
+            flex: 1;
+            min-width: 100px;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:active {
+            background: #5568d3;
+            transform: scale(0.98);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:active {
+            background: #e0e0e0;
+        }
+
+        .btn-danger {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-danger:active {
+            background: #ee5a52;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 15px;
+            aspect-ratio: 4/3;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-placeholder {
+            color: #999;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .upload-section {
+            margin-bottom: 15px;
+            flex-shrink: 0;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .file-input-label {
+            display: block;
+            padding: 10px 16px;
+            background: #f0f0f0;
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #667eea;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .file-input-label:active {
+            background: #e8f0ff;
+        }
+
+        .results-section {
+            background: #f9f9f9;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 0;
+            flex: 1;
+            overflow-y: auto;
+            min-height: 150px;
+        }
+
+        .result-item {
+            background: white;
+            border-left: 4px solid #667eea;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+
+        .result-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .result-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .result-type {
+            font-size: 11px;
+            color: #999;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+
+        .result-text {
+            font-size: 13px;
+            color: #333;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+        }
+
+        .copy-btn {
+            padding: 6px 10px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            white-space: nowrap;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .copy-btn:active {
+            background: #5568d3;
+        }
+
+        .copy-btn.copied {
+            background: #51cf66;
+        }
+
+        .status {
+            padding: 10px 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            display: none;
+            flex-shrink: 0;
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+            border-left: 4px solid #1976d2;
+        }
+
+        .status.success {
+            background: #e8f5e9;
+            color: #388e3c;
+            border-left: 4px solid #388e3c;
+        }
+
+        .status.error {
+            background: #ffebee;
+            color: #d32f2f;
+            border-left: 4px solid #d32f2f;
+        }
+
+        .status.warning {
+            background: #fff3e0;
+            color: #f57c00;
+            border-left: 4px solid #f57c00;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #999;
+            padding: 15px;
+            font-size: 13px;
+        }
+
+        .offline-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #ff6b6b;
+            color: white;
+            padding: 8px;
+            text-align: center;
+            font-size: 12px;
+            display: none;
+            z-index: 1000;
+        }
+
+        .offline-indicator.show {
+            display: block;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                border-radius: 0;
+                padding: 20px 15px;
+                max-height: 100vh;
+            }
+
+            h1 {
+                font-size: 20px;
+            }
+
+            .control-panel {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+
+            .video-container {
+                aspect-ratio: auto;
+                height: 300px;
+            }
+        }
+
+        @supports (padding: max(0px)) {
+            .container {
+                padding-top: max(20px, env(safe-area-inset-top));
+                padding-bottom: max(20px, env(safe-area-inset-bottom));
+                padding-left: max(15px, env(safe-area-inset-left));
+                padding-right: max(15px, env(safe-area-inset-right));
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-indicator" id="offlineIndicator">
+        📡 오프라인 상태 - 이전에 스캔한 데이터만 사용 가능합니다
+    </div>
+
+    <div class="container">
+        <h1>📱 바코드 스캐너</h1>
+        <p class="subtitle">DataMatrix & QR 코드</p>
+
+        <div class="install-banner" id="installBanner">
+            <span>앱으로 설치하면 더 편하게 사용할 수 있습니다!</span>
+            <button onclick="installApp()">설치</button>
+            <button onclick="dismissInstallBanner()" style="background: rgba(255,255,255,0.3); color: white;">닫기</button>
+        </div>
+
+        <div class="status" id="status"></div>
+
+        <div class="control-panel">
+            <button class="btn-primary" id="startBtn" onclick="startCamera()">📷 시작</button>
+            <button class="btn-danger" id="stopBtn" onclick="stopCamera()" disabled>⏹️ 중지</button>
+            <button class="btn-secondary" id="clearBtn" onclick="clearResults()">🗑️ 초기화</button>
+        </div>
+
+        <div class="upload-section">
+            <div class="file-input-wrapper">
+                <label for="fileInput" class="file-input-label">
+                    📷 이미지 업로드 또는 드래그
+                </label>
+                <input type="file" id="fileInput" accept="image/*" onchange="handleFileSelect(event)">
+            </div>
+        </div>
+
+        <div class="video-container">
+            <video id="video" style="display: none;"></video>
+            <div class="video-placeholder" id="placeholder">카메라를 시작하세요</div>
+        </div>
+
+        <div class="results-section">
+            <h3 style="margin-bottom: 12px; color: #333; font-size: 14px;">📊 결과</h3>
+            <div id="results">
+                <div class="empty-state">스캔된 코드가 없습니다</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { readBarcodes } = ZXingWASM;
+        let stream = null;
+        let scanning = false;
+        const results = new Map();
+        let deferredPrompt = null;
+
+        // Service Worker 등록
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('service-worker.js')
+                .then(registration => {
+                    console.log('[App] Service Worker registered:', registration);
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                showStatus('새 버전이 있습니다. 앱을 새로고침하세요.', 'info');
+                            }
+                        });
+                    });
+                })
+                .catch(err => console.error('[App] Service Worker registration failed:', err));
+        }
+
+        // PWA 설치 프롬프트 처리
+        window.addEventListener('beforeinstallprompt', event => {
+            event.preventDefault();
+            deferredPrompt = event;
+            document.getElementById('installBanner').classList.add('show');
+        });
+
+        function installApp() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then(choiceResult => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('[App] User accepted install prompt');
+                        document.getElementById('installBanner').classList.remove('show');
+                    }
+                    deferredPrompt = null;
+                });
+            }
+        }
+
+        function dismissInstallBanner() {
+            document.getElementById('installBanner').classList.remove('show');
+            deferredPrompt = null;
+        }
+
+        // 온/오프라인 상태 감지
+        window.addEventListener('online', () => {
+            console.log('[App] Online');
+            document.getElementById('offlineIndicator').classList.remove('show');
+            showStatus('인터넷 연결 복구됨', 'success');
+        });
+
+        window.addEventListener('offline', () => {
+            console.log('[App] Offline');
+            document.getElementById('offlineIndicator').classList.add('show');
+            showStatus('오프라인 상태입니다', 'warning');
+        });
+
+        // 상태 메시지 표시
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status show ${type}`;
+            setTimeout(() => {
+                statusEl.classList.remove('show');
+            }, 4000);
+        }
+
+        // 카메라 시작
+        async function startCamera() {
+            try {
+                showStatus('카메라 접근 중...', 'info');
+                
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                });
+
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                video.style.display = 'block';
+                document.getElementById('placeholder').style.display = 'none';
+
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+
+                showStatus('카메라가 시작되었습니다', 'success');
+                scanning = true;
+                scanFrame();
+            } catch (error) {
+                showStatus('카메라 접근 실패: ' + error.message, 'error');
+                console.error('Camera error:', error);
+            }
+        }
+
+        // 카메라 중지
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+
+            const video = document.getElementById('video');
+            video.style.display = 'none';
+            document.getElementById('placeholder').style.display = 'flex';
+
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+
+            scanning = false;
+            showStatus('카메라가 중지되었습니다', 'info');
+        }
+
+        // 프레임 스캔
+        async function scanFrame() {
+            if (!scanning) return;
+
+            try {
+                const video = document.getElementById('video');
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                ctx.drawImage(video, 0, 0);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                const barcodes = await readBarcodes(imageData, {
+                    formats: ['QRCode', 'DataMatrix'],
+                    tryHarder: true
+                });
+
+                if (barcodes.length > 0) {
+                    barcodes.forEach(barcode => {
+                        const key = barcode.text;
+                        if (!results.has(key)) {
+                            results.set(key, {
+                                text: barcode.text,
+                                format: barcode.format,
+                                timestamp: new Date().toLocaleTimeString('ko-KR')
+                            });
+                            updateResults();
+                            showStatus(`${barcode.format} 감지됨!`, 'success');
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Scan error:', error);
+            }
+
+            requestAnimationFrame(scanFrame);
+        }
+
+        // 파일 선택 처리
+        async function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                showStatus('분석 중...', 'info');
+                const blob = new Blob([await file.arrayBuffer()]);
+                const barcodes = await readBarcodes(blob, {
+                    formats: ['QRCode', 'DataMatrix'],
+                    tryHarder: true
+                });
+
+                if (barcodes.length > 0) {
+                    barcodes.forEach(barcode => {
+                        const key = barcode.text + '_' + Date.now();
+                        results.set(key, {
+                            text: barcode.text,
+                            format: barcode.format,
+                            timestamp: new Date().toLocaleTimeString('ko-KR')
+                        });
+                    });
+                    updateResults();
+                    showStatus(`${barcodes.length}개 찾음!`, 'success');
+                } else {
+                    showStatus('코드를 찾을 수 없습니다', 'warning');
+                }
+            } catch (error) {
+                showStatus('오류: ' + error.message, 'error');
+                console.error('File processing error:', error);
+            }
+
+            event.target.value = '';
+        }
+
+        // 결과 업데이트
+        function updateResults() {
+            const resultsDiv = document.getElementById('results');
+            
+            if (results.size === 0) {
+                resultsDiv.innerHTML = '<div class="empty-state">스캔된 코드가 없습니다</div>';
+                return;
+            }
+
+            resultsDiv.innerHTML = Array.from(results.values())
+                .reverse()
+                .map((result, index) => `
+                    <div class="result-item">
+                        <div class="result-info">
+                            <div class="result-type">${result.format} • ${result.timestamp}</div>
+                            <div class="result-text">${escapeHtml(result.text)}</div>
+                        </div>
+                        <button class="copy-btn" onclick="copyToClipboard('${escapeHtml(result.text).replace(/'/g, "\\'")}', this)">
+                            복사
+                        </button>
+                    </div>
+                `)
+                .join('');
+        }
+
+        // 클립보드 복사
+        function copyToClipboard(text, button) {
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = button.textContent;
+                button.textContent = '✓';
+                button.classList.add('copied');
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.classList.remove('copied');
+                }, 1500);
+            }).catch(err => {
+                console.error('Copy failed:', err);
+                showStatus('복사 실패', 'error');
+            });
+        }
+
+        // HTML 이스케이프
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        // 결과 초기화
+        function clearResults() {
+            results.clear();
+            updateResults();
+            showStatus('초기화됨', 'info');
+        }
+
+        // 드래그 앤 드롭
+        const fileInput = document.getElementById('fileInput');
+        const fileLabel = document.querySelector('.file-input-label');
+
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileLabel.style.background = '#e8f0ff';
+        });
+
+        document.addEventListener('dragleave', () => {
+            fileLabel.style.background = '#f0f0f0';
+        });
+
+        document.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileLabel.style.background = '#f0f0f0';
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFileSelect({ target: { files } });
+            }
+        });
+
+        // 페이지 언로드 시 카메라 중지
+        window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        });
+
+        // 초기 오프라인 상태 확인
+        if (!navigator.onLine) {
+            document.getElementById('offlineIndicator').classList.add('show');
+        }
+
+        // 화면 잠금 방지 (선택사항)
+        if ('wakeLock' in navigator) {
+            let wakeLockSentinel = null;
+
+            async function requestWakeLock() {
+                try {
+                    wakeLockSentinel = await navigator.wakeLock.request('screen');
+                    console.log('[App] Wake lock acquired');
+                } catch (err) {
+                    console.error('[App] Wake lock failed:', err);
+                }
+            }
+
+            document.addEventListener('visibilitychange', async () => {
+                if (document.hidden) {
+                    if (wakeLockSentinel !== null) {
+                        wakeLockSentinel.release();
+                        wakeLockSentinel = null;
+                    }
+                } else {
+                    if (scanning) {
+                        await requestWakeLock();
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
