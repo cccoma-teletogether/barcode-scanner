@@ -1,0 +1,192 @@
+{
+  "version": 1,
+  "exportedAt": "2026-06-08T12:19:09.417Z",
+  "sensorTypes": [
+    {
+      "id": "caresens_air",
+      "name": "CareSens Air",
+      "wearDays": 15,
+      "color": "#00c6fb",
+      "gtin": "08809126640655",
+      "model": "CGM-ST-002"
+    },
+    {
+      "id": "barogen_fit",
+      "name": "Barozen Fit",
+      "wearDays": 15,
+      "color": "#43e97b",
+      "gtin": "08806712005959",
+      "model": "CGM-ST-003"
+    },
+    {
+      "id": "dexcom_g7",
+      "name": "Dexcom G7",
+      "wearDays": 10,
+      "color": "#f7971e",
+      "gtin": "00386270004673",
+      "model": "STP-GT-009",
+      "aliases": [
+        "dexcom",
+        "dexcom g7",
+        "g7",
+        "stp-gt-009"
+      ]
+    },
+    {
+      "id": "fakoring",
+      "name": "피코링 / Picoling",
+      "wearDays": 15,
+      "color": "#f953c6",
+      "gtin": "06958590313168",
+      "model": "",
+      "aliases": [
+        "fakoring",
+        "picoling",
+        "피코링"
+      ]
+    },
+    {
+      "id": "gs1",
+      "name": "GS1 (Sibionics)",
+      "wearDays": 14,
+      "color": "#a78bfa",
+      "gtin": "06972831642299",
+      "model": ""
+    },
+    {
+      "id": "libre2",
+      "name": "FreeStyle Libre 2",
+      "wearDays": 14,
+      "color": "#38bdf8",
+      "gtin": "",
+      "model": ""
+    }
+  ],
+  "inventory": [
+    {
+      "id": "inv_lebh8i7fmq56a7zs",
+      "typeId": "caresens_air",
+      "serial": "",
+      "lot": "260106C002",
+      "expiry": "2027-08-03",
+      "openedAt": "",
+      "notes": "",
+      "archived": false,
+      "createdAt": "2026-06-08T12:13:56.344Z"
+    },
+    {
+      "id": "inv_1226vqqkmq5685nh",
+      "typeId": "caresens_air",
+      "serial": "",
+      "lot": "251031C001",
+      "expiry": "2027-05-28",
+      "openedAt": "",
+      "notes": "",
+      "archived": false,
+      "createdAt": "2026-06-08T12:12:19.998Z"
+    },
+    {
+      "id": "inv_ogrz9utemq567n6g",
+      "typeId": "barogen_fit",
+      "serial": "",
+      "lot": "250909C001",
+      "expiry": "2027-04-10",
+      "openedAt": "",
+      "notes": "",
+      "archived": false,
+      "createdAt": "2026-06-08T12:11:56.057Z"
+    },
+    {
+      "id": "inv_l4hl9alvmq566ov2",
+      "typeId": "caresens_air",
+      "serial": "0260116C002",
+      "lot": "260116C002",
+      "expiry": "2027-08-12",
+      "openedAt": "",
+      "notes": "SERIAL: 0260116C002",
+      "archived": false,
+      "createdAt": "2026-06-08T12:11:11.582Z"
+    },
+    {
+      "id": "inv_6k1r4841mq55yvbz",
+      "typeId": "barogen_fit",
+      "serial": "0",
+      "lot": "250826B001",
+      "expiry": "2026-09-22",
+      "openedAt": "",
+      "notes": "SERIAL: 0",
+      "archived": false,
+      "createdAt": "2026-06-08T12:05:06.719Z"
+    },
+    {
+      "id": "inv_m99t62xzmq55ybtd",
+      "typeId": "barogen_fit",
+      "serial": "",
+      "lot": "250829B001",
+      "expiry": "2026-09-23",
+      "openedAt": "",
+      "notes": "",
+      "archived": false,
+      "createdAt": "2026-06-08T12:04:41.425Z"
+    },
+    {
+      "id": "inv_01ki2m8umq55qksc",
+      "typeId": "barogen_fit",
+      "serial": "",
+      "lot": "250804B002",
+      "expiry": "2026-09-05",
+      "openedAt": "",
+      "notes": "",
+      "archived": false,
+      "createdAt": "2026-06-08T11:58:39.805Z"
+    },
+    {
+      "id": "inv_90zgedqdmq500ch2",
+      "typeId": "fakoring",
+      "serial": "22222CDEJU",
+      "lot": "QF26D00F|",
+      "expiry": "2027-07-23",
+      "openedAt": "",
+      "notes": "SERIAL: 260326JXGE457CAA36\nSERIAL: 22222CDEJU",
+      "archived": false,
+      "createdAt": "2026-06-08T09:18:17.894Z"
+    },
+    {
+      "id": "inv_luywh01imq4zxts1",
+      "typeId": "gs1",
+      "serial": "260326JXGE457CAA36",
+      "lot": "LT4F260326V|",
+      "expiry": "2027-03-25",
+      "openedAt": "",
+      "notes": "SERIAL: 260326JXGE457CAA36",
+      "archived": false,
+      "createdAt": "2026-06-08T09:16:20.354Z"
+    },
+    {
+      "id": "inv_w3r6ipkbmq4zlyo2",
+      "typeId": "barogen_fit",
+      "serial": "",
+      "lot": "250703B003",
+      "expiry": "2026-07-25",
+      "openedAt": "2026-06-05",
+      "notes": "",
+      "archived": false,
+      "createdAt": "2026-06-08T09:10:14.395Z"
+    },
+    {
+      "id": "inv_dvkb5d2emq4yex6f",
+      "typeId": "dexcom_g7",
+      "serial": "4003446",
+      "lot": "038627000467311",
+      "expiry": "2026-11-30",
+      "openedAt": "",
+      "notes": "SERIAL: 4003446",
+      "archived": false,
+      "createdAt": "2026-06-08T08:33:38.679Z"
+    }
+  ],
+  "workLogs": [],
+  "settings": {
+    "alertDays": 30
+  }
+}
