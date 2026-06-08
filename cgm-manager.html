@@ -486,6 +486,32 @@
       { id: 'gs1', name: 'GS1 (Sibionics)', wearDays: 14, color: '#a78bfa', gtin: '06972831642299', model: '' },
       { id: 'libre2', name: 'FreeStyle Libre 2', wearDays: 14, color: '#38bdf8', gtin: '', model: '' }
     ];
+    const DEFAULT_CHANGELOG_ENTRIES = [
+      {
+        title: '2026-06-08 작업기록 탭 변경',
+        items: [
+          '작업기록 탭을 사용자 입력 메모가 아닌 프로그램 변경내역 표시 화면으로 전환했습니다.',
+          '`docs/changelog.md`를 기준 소스로 사용하도록 연결했습니다.',
+          '작업기록 탭에 새로고침 상태 표시를 추가했습니다.'
+        ]
+      },
+      {
+        title: '2026-06-08 작업기록 탭 추가',
+        items: [
+          '상단 내비게이션에 작업기록 탭을 추가했습니다.',
+          '작업기록 화면과 목록 UI를 앱에 추가했습니다.',
+          '백업과 복원 데이터에 작업기록 상태를 포함하도록 확장했습니다.'
+        ]
+      },
+      {
+        title: '2026-06-08 GS1 및 DataMatrix 보강',
+        items: [
+          'GS1 compact 문자열 파싱을 보완해 GTIN, 유효기간, LOT, 일련번호 매핑을 강화했습니다.',
+          '센서별 스캔 프로파일 분리 구조를 적용했습니다.',
+          '이미지 스캔 결과를 GS1 원문 입력에 자동 반영하도록 연결했습니다.'
+        ]
+      }
+    ];
 
     const els = {
       todayText: document.getElementById('todayText'),
@@ -567,7 +593,7 @@
     let selectedId = null;
     let scanReader = null;
     let barcodeDetector = null;
-    let changelogEntries = [];
+    let changelogEntries = structuredClone(DEFAULT_CHANGELOG_ENTRIES);
 
     function loadState() {
       try {
@@ -1930,11 +1956,12 @@
         const response = await fetch(`docs/changelog.md?v=${encodeURIComponent(todayISO())}`, { cache: 'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const markdown = await response.text();
-        changelogEntries = parseChangelogMarkdown(markdown);
-        els.changelogStatus.textContent = '동기화 완료';
+        const parsed = parseChangelogMarkdown(markdown);
+        changelogEntries = parsed.length ? parsed : structuredClone(DEFAULT_CHANGELOG_ENTRIES);
+        els.changelogStatus.textContent = parsed.length ? '동기화 완료' : '기본 내역 표시';
       } catch {
-        changelogEntries = [];
-        els.changelogStatus.textContent = '불러오기 실패';
+        changelogEntries = structuredClone(DEFAULT_CHANGELOG_ENTRIES);
+        els.changelogStatus.textContent = '기본 내역 표시';
       }
       renderWorkLogs();
     }
@@ -1951,7 +1978,7 @@
     function deleteWorkLog() {}
 
     function renderWorkLogs() {
-      const logs = changelogEntries || [];
+      const logs = changelogEntries?.length ? changelogEntries : DEFAULT_CHANGELOG_ENTRIES;
       els.workLogCount.textContent = `${logs.length}건`;
       if (!logs.length) {
         els.workLogList.innerHTML = emptyRow('표시할 프로그램 작업내용이 없습니다.');
