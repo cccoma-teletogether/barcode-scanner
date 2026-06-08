@@ -1277,6 +1277,10 @@
         ['center', centerCrop],
         ['center-threshold', createProcessedCanvas(centerCrop, 'threshold')],
         ['center-invert', createProcessedCanvas(centerCrop, 'invert')],
+        ['center-rot90', rotateCanvas(centerCrop, 90)],
+        ['center-rot270', rotateCanvas(centerCrop, 270)],
+        ['center-rot90-threshold', createProcessedCanvas(rotateCanvas(centerCrop, 90), 'threshold')],
+        ['center-rot270-threshold', createProcessedCanvas(rotateCanvas(centerCrop, 270), 'threshold')],
         ['center-4x', scaleCanvas(centerCrop, 4)],
         ['original-threshold', createProcessedCanvas(baseCanvas, 'threshold')]
       ];
@@ -1319,17 +1323,17 @@
     async function decodeCanvasWithReader(reader, canvas) {
       const readerAny = reader || ensureScanReader();
       if (typeof readerAny.decodeFromCanvas === 'function') {
-        const decoded = await withTimeout(readerAny.decodeFromCanvas(canvas), 700);
+        const decoded = await withTimeout(readerAny.decodeFromCanvas(canvas), 1100);
         if (decoded?.text && isPlausibleScanText(decoded.text)) return { text: decoded.text, format: decoded.format || 'data_matrix', method: 'ZXing' };
       }
       if (typeof readerAny.decodeOnceFromCanvas === 'function') {
-        const decoded = await withTimeout(readerAny.decodeOnceFromCanvas(canvas), 700);
+        const decoded = await withTimeout(readerAny.decodeOnceFromCanvas(canvas), 1100);
         if (decoded?.text && isPlausibleScanText(decoded.text)) return { text: decoded.text, format: decoded.format || 'data_matrix', method: 'ZXing' };
       }
       if (typeof readerAny.decodeFromImageUrl === 'function') {
         const url = await canvasToObjectUrl(canvas);
         try {
-          const decoded = await withTimeout(readerAny.decodeFromImageUrl(url), 900);
+          const decoded = await withTimeout(readerAny.decodeFromImageUrl(url), 1200);
           if (decoded?.text && isPlausibleScanText(decoded.text)) return { text: decoded.text, format: decoded.format || 'data_matrix', method: 'ZXing' };
         } finally {
           URL.revokeObjectURL(url);
@@ -1339,7 +1343,7 @@
         const img = new Image();
         img.src = canvas.toDataURL('image/png');
         await img.decode();
-        const decoded = await withTimeout(readerAny.decodeFromImageElement(img), 900);
+        const decoded = await withTimeout(readerAny.decodeFromImageElement(img), 1200);
         if (decoded?.text && isPlausibleScanText(decoded.text)) return { text: decoded.text, format: decoded.format || 'data_matrix', method: 'ZXing' };
       }
       return null;
