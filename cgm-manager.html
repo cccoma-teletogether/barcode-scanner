@@ -1849,12 +1849,14 @@
         if (existing) existing.remove();
       }
 
+      const alertDays = Number(state.settings.alertDays || 30);
       const priority = items
         .filter(it => !it.archived)
+        .filter(it => it.calc.effective && it.calc.remaining != null && it.calc.remaining <= alertDays)
         .sort((a, b) => compareItems(a, b, 'effectiveAsc'))
         .slice(0, 8);
       els.priorityCount.textContent = `${priority.length}개`;
-      els.priorityList.innerHTML = priority.length ? priority.map(renderMiniItem).join('') : emptyRow('등록된 재고가 없습니다.');
+      els.priorityList.innerHTML = priority.length ? priority.map(renderMiniItem).join('') : emptyRow(`만료 임박 판단 일수(${alertDays}일) 이내 재고가 없습니다.`);
 
       const typeCounts = state.sensorTypes.map(type => {
         const list = items.filter(it => it.typeId === type.id && !it.archived);
