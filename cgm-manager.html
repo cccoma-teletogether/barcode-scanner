@@ -2428,17 +2428,24 @@
       renderCalendar();
     }
 
-    // 같은 종류의 마지막 계획 종료일 다음날 반환 (없으면 오늘)
+    // 같은 종류의 마지막 계획 종료일 반환 (없으면 오늘, 과거면 오늘로 보정)
     function suggestPlanStartDate(typeId) {
       const samePlans = state.plans.filter(p => p.typeId === typeId);
-      const inUse = inUsePseudoPlans().filter(p => p.typeId === typeId);
+      // 실제 사용중인 센서는 endDate가 오늘 이후인 경우만 포함 (과거 개봉 방치 센서 제외)
+      const inUse = inUsePseudoPlans().filter(p => {
+        if (p.typeId !== typeId) return false;
+        const e = planEndDate(p);
+        return e >= todayISO();
+      });
       const all = [...samePlans, ...inUse];
       if (!all.length) return todayISO();
       const lastEnd = all.reduce((best, p) => {
         const e = planEndDate(p);
         return e > best ? e : best;
       }, '');
-      return lastEnd || todayISO();
+      if (!lastEnd) return todayISO();
+      // 계산 결과가 과거면 오늘로 보정
+      return lastEnd >= todayISO() ? lastEnd : todayISO();
     }
 
     // plan 폼 열기
