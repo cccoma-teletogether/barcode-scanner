@@ -2315,9 +2315,15 @@
         }));
     }
 
+    // inUse + 등록 계획 합산 (등록 계획이 있는 센서는 inUse 중복 제외)
+    function allActivePlans() {
+      const plannedInvIds = new Set(state.plans.map(p => p.invId));
+      const inUse = inUsePseudoPlans().filter(p => !plannedInvIds.has(p.invId));
+      return [...inUse, ...state.plans];
+    }
+
     function renderPlanList() {
-      const inUsePlans = inUsePseudoPlans();
-      const plans = [...inUsePlans, ...state.plans].sort((a, b) => a.startDate.localeCompare(b.startDate));
+      const plans = allActivePlans().sort((a, b) => a.startDate.localeCompare(b.startDate));
       els.planCount.textContent = `${plans.length}건`;
       if (!plans.length) {
         els.planList.innerHTML = '<div class="mini">등록된 계획이 없습니다.</div>';
@@ -2383,7 +2389,7 @@
         const isToday = dateStr === today;
 
         // 이 날짜와 겹치는 계획들 (사용중 포함)
-        const allPlans = [...inUsePseudoPlans(), ...state.plans];
+        const allPlans = allActivePlans();
         const bars = allPlans.filter(p => {
           const end = planEndDate(p);
           return dateStr >= p.startDate && dateStr <= end;
