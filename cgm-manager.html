@@ -461,7 +461,10 @@
             <div class="cal-nav">
               <button class="btn small" id="calPrev">&#8249;</button>
               <strong id="calTitle"></strong>
-              <button class="btn small" id="calNext">&#8250;</button>
+              <div style="display:flex;gap:6px;">
+                <button class="btn small" id="calToday">오늘</button>
+                <button class="btn small" id="calNext">&#8250;</button>
+              </div>
             </div>
             <div class="cal-grid" id="calGrid"></div>
           </div>
@@ -693,6 +696,7 @@
       planList: document.getElementById('planList'),
       calPrev: document.getElementById('calPrev'),
       calNext: document.getElementById('calNext'),
+      calToday: document.getElementById('calToday'),
       calTitle: document.getElementById('calTitle'),
       calGrid: document.getElementById('calGrid')
     };
@@ -2611,6 +2615,13 @@
     els.calNext.addEventListener('click', () => {
       planCalMonth++;
       if (planCalMonth > 11) { planCalMonth = 0; planCalYear++; }
+      renderCalendar();
+    });
+
+    els.calToday.addEventListener('click', () => {
+      const now = new Date();
+      planCalYear = now.getFullYear();
+      planCalMonth = now.getMonth();
       renderCalendar();
     });
 
