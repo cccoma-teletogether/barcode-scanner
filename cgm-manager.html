@@ -2428,27 +2428,14 @@
       renderCalendar();
     }
 
-    // 같은 종류의 마지막 계획 종료일 반환 (없으면 오늘, 과거면 오늘로 보정)
-    function suggestPlanStartDate(typeId) {
-      // 1순위: 등록된 계획 중 종료일이 가장 늦은 것
-      const samePlans = state.plans.filter(p => p.typeId === typeId);
-      if (samePlans.length) {
-        const lastEnd = samePlans.reduce((best, p) => {
-          const e = planEndDate(p);
-          return e > best ? e : best;
-        }, '');
-        if (lastEnd) return lastEnd >= todayISO() ? lastEnd : todayISO();
-      }
-      // 2순위: 등록 계획 없으면 현재 사용중 센서의 종료일 (미래인 경우만)
-      const inUse = inUsePseudoPlans().filter(p => p.typeId === typeId);
-      if (inUse.length) {
-        const lastEnd = inUse.reduce((best, p) => {
-          const e = planEndDate(p);
-          return e > best ? e : best;
-        }, '');
-        if (lastEnd && lastEnd >= todayISO()) return lastEnd;
-      }
-      return todayISO();
+    // 등록된 전체 사용계획 중 가장 마지막 종료일 반환 (없으면 오늘)
+    function suggestPlanStartDate() {
+      if (!state.plans.length) return todayISO();
+      const lastEnd = state.plans.reduce((best, p) => {
+        const e = planEndDate(p);
+        return e > best ? e : best;
+      }, '');
+      return lastEnd || todayISO();
     }
 
     // plan 폼 열기
@@ -2457,7 +2444,7 @@
       const item = state.inventory.find(x => x.id === invId);
       const type = sensorTypeById(item?.typeId);
       els.planFormTitle.textContent = `사용 시작일 지정 — ${type?.name || '-'}`;
-      els.planStartDate.value = suggestPlanStartDate(item?.typeId);
+      els.planStartDate.value = suggestPlanStartDate();
       els.planOverlapWarn.style.display = 'none';
       els.planFormPanel.style.display = '';
       renderPlanSensorList();
