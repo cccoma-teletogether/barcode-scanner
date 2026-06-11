@@ -319,7 +319,6 @@
           <select id="filterStatus">
             <option value="">상태 전체</option>
             <option value="ready">미개봉</option>
-            <option value="in_use">사용중</option>
             <option value="shelf_warning">유효기간 임박</option>
             <option value="expired">만료</option>
             <option value="archived">폐기</option>
@@ -515,6 +514,11 @@
                 <button class="btn" id="exportData" type="button">JSON 내보내기</button>
                 <label class="btn" for="importFile" style="cursor:pointer;">JSON 불러오기</label>
                 <input id="importFile" type="file" accept="application/json" class="hidden" />
+              </div>
+              <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line);">
+                <div class="mini" style="margin-bottom: 8px; color: var(--red);">위험 구역</div>
+                <button class="btn danger" id="resetData" type="button">데이터 초기화</button>
+                <div class="mini" style="margin-top: 6px; color: var(--muted);">재고·사용계획·설정이 모두 삭제됩니다. 되돌릴 수 없습니다.</div>
               </div>
             </div>
           </div>
@@ -723,6 +727,7 @@
     let planSelectedInvId = null; // 현재 선택된 재고 id
     let planEditingPlanId = null; // 수정 중인 계획 id
     let planListSelectedId = null; // 달력 클릭으로 선택된 계획 id
+    let dashTypeFilter = null;    // 대시보드 우선 사용 대상 센서 종류 필터
     let lastScannedLabelImg = ''; // 마지막 스캔 썸네일 base64
     const _calcCache = new Map(); // calc() 렌더 사이클 캐시
 
@@ -2028,13 +2033,20 @@
       }
 
       const alertDays = Number(state.settings.alertDays || 30);
-      const priority = items
+      const priorityBase = items
         .filter(it => !it.archived)
         .filter(it => it.calc.effective && it.calc.remaining != null && it.calc.remaining <= alertDays)
         .sort((a, b) => compareItems(a, b, 'effectiveAsc'))
         .slice(0, 8);
-      els.priorityCount.textContent = `${priority.length}개`;
-      els.priorityList.innerHTML = priority.length ? priority.map(renderMiniItem).join('') : emptyRow(`만료 임박 판단 일수(${alertDays}일) 이내 재고가 없습니다.`);
+      const priority = dashTypeFilter ? priorityBase.filter(it => it.typeId === dashTypeFilter) : priorityBase;
+      const filterLabel = dashTypeFilter ? ` <span class="badge" style="background:#eff6ff;color:var(--primary);border-color:#bfdbfe;cursor:pointer;" id="dashTypeFilterClear">✕ ${escapeHtml(sensorTypeById(dashTypeFilter)?.name || '')}</span>` : '';
+      els.priorityCount.innerHTML = `${priorityBase.length}개${filterLabel}`;
+      els.priorityList.innerHTML = priority.length ? priority.map(renderMiniItem).join('') : emptyRow(dashTypeFilter ? '해당 종류의 임박 재고가 없습니다.' : `만료 임박 판단 일수(${alertDays}일) 이내 재고가 없습니다.`);
+      document.getElementById('dashTypeFilterClear')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dashTypeFilter = null;
+        renderStats();
+      });
 
       const typeCounts = state.sensorTypes.map(type => {
         const list = items.filter(it => it.typeId === type.id && !it.archived);
@@ -2048,17 +2060,30 @@
         };
       });
       els.typeCount.textContent = `${typeCounts.length}종`;
-      els.typeSummary.innerHTML = typeCounts.length ? typeCounts.map(({ type, color, count, shelfWarning, wearCount }) => `
-        <div class="item" style="grid-template-columns: 1fr auto; align-items: center; border-left:4px solid ${color};">
+      els.typeSummary.innerHTML = typeCounts.length ? typeCounts.map(({ type, color, count, shelfWarning, wearCount }) => {
+        const selected = dashTypeFilter === type.id;
+        const selStyle = selected ? `outline:2px solid ${color}; background:${color}14;` : '';
+        return `
+        <div class="item" data-dash-type="${escapeAttr(type.id)}"
+          style="grid-template-columns: 1fr auto; align-items: center; border-left:4px solid ${color}; cursor:pointer; ${selStyle}">
           <div>
             <div class="name">
               <span class="badge" style="background:${color}22; color:${color}; border-color:${color}33; margin-right:6px;">■</span>${escapeHtml(type.name)}
+              ${selected ? `<span class="meta" style="color:var(--primary); margin-left:6px;">필터 중 — 클릭해서 해제</span>` : ''}
             </div>
             <div class="meta">사용기간 ${type.wearDays}일 · 유효기간 임박 ${shelfWarning}개 · 사용중 ${wearCount}개</div>
           </div>
           <div class="badge" style="background:${color}14; color:${color}; border-color:${color}33;">${count}개</div>
-        </div>
-      `).join('') : emptyRow('센서 종류가 없습니다.');
+        </div>`;
+      }).join('') : emptyRow('센서 종류가 없습니다.');
+
+      els.typeSummary.querySelectorAll('[data-dash-type]').forEach(el => {
+        el.addEventListener('click', () => {
+          const typeId = el.dataset.dashType;
+          dashTypeFilter = dashTypeFilter === typeId ? null : typeId;
+          renderStats();
+        });
+      });
     }
 
     function emptyRow(text) {
@@ -3088,6 +3113,24 @@
       a.download = `cgmmgr-backup-${todayISO()}.json`;
       a.click();
       URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('resetData').addEventListener('click', () => {
+      if (!confirm('모든 재고·사용계획·설정이 삭제됩니다.\n정말 초기화할까요?')) return;
+      if (!confirm('두 번째 확인입니다.\n되돌릴 수 없습니다. 계속할까요?')) return;
+      localStorage.removeItem(STORAGE_KEY);
+      state = {
+        sensorTypes: structuredClone(DEFAULT_SENSOR_TYPES),
+        inventory: [],
+        workLogs: [],
+        plans: [],
+        settings: { ...DEFAULT_SETTINGS }
+      };
+      dashTypeFilter = null;
+      planListSelectedId = null;
+      saveState();
+      rerender();
+      showToast('데이터가 초기화되었습니다.', 'info');
     });
 
     els.importFile.addEventListener('change', async () => {
