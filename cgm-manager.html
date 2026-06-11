@@ -2430,22 +2430,25 @@
 
     // 같은 종류의 마지막 계획 종료일 반환 (없으면 오늘, 과거면 오늘로 보정)
     function suggestPlanStartDate(typeId) {
+      // 1순위: 등록된 계획 중 종료일이 가장 늦은 것
       const samePlans = state.plans.filter(p => p.typeId === typeId);
-      // 실제 사용중인 센서는 endDate가 오늘 이후인 경우만 포함 (과거 개봉 방치 센서 제외)
-      const inUse = inUsePseudoPlans().filter(p => {
-        if (p.typeId !== typeId) return false;
-        const e = planEndDate(p);
-        return e >= todayISO();
-      });
-      const all = [...samePlans, ...inUse];
-      if (!all.length) return todayISO();
-      const lastEnd = all.reduce((best, p) => {
-        const e = planEndDate(p);
-        return e > best ? e : best;
-      }, '');
-      if (!lastEnd) return todayISO();
-      // 계산 결과가 과거면 오늘로 보정
-      return lastEnd >= todayISO() ? lastEnd : todayISO();
+      if (samePlans.length) {
+        const lastEnd = samePlans.reduce((best, p) => {
+          const e = planEndDate(p);
+          return e > best ? e : best;
+        }, '');
+        if (lastEnd) return lastEnd >= todayISO() ? lastEnd : todayISO();
+      }
+      // 2순위: 등록 계획 없으면 현재 사용중 센서의 종료일 (미래인 경우만)
+      const inUse = inUsePseudoPlans().filter(p => p.typeId === typeId);
+      if (inUse.length) {
+        const lastEnd = inUse.reduce((best, p) => {
+          const e = planEndDate(p);
+          return e > best ? e : best;
+        }, '');
+        if (lastEnd && lastEnd >= todayISO()) return lastEnd;
+      }
+      return todayISO();
     }
 
     // plan 폼 열기
