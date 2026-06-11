@@ -2377,13 +2377,20 @@
         const item = state.inventory.find(x => x.id === p.invId);
         const expiry = item?.expiry || '';
         const overEnd = expiry && end > expiry;
+        // 종료일~유효기간 간격
+        const gapDays = expiry && !overEnd ? daysBetween(end, expiry) : null;
+        const gapHtml = overEnd
+          ? `<span style="color:var(--red); font-size:11px;">⚠ 유효기간 ${daysBetween(expiry, end)}일 초과</span>`
+          : gapDays != null
+            ? `<span style="color:${gapDays <= 3 ? 'var(--orange)' : 'var(--green)'}; font-size:11px;">종료→유효기간 여유 ${gapDays}일</span>`
+            : '';
         if (p._inUse) {
           return `
             <div class="plan-list-item" data-plan-id="${escapeAttr(p.id)}">
               <span class="plan-dot" style="background:${color}; outline:2px solid ${color}; outline-offset:1px;"></span>
               <div>
                 <div style="font-weight:700;">${escapeHtml(type?.name || '-')} <span class="status in_use" style="font-size:11px; padding:2px 6px;">사용중</span></div>
-                <div class="meta">${p.startDate} ~ ${end}${overEnd ? ' <span style="color:var(--red);">⚠ 유효기간 초과</span>' : ''}</div>
+                <div class="meta">${p.startDate} ~ ${end} ${gapHtml}</div>
                 <div class="meta">${item?.serial ? `S/N ${escapeHtml(item.serial)}` : '일련번호 없음'} · 유효기간 ${fmtDate(item?.expiry)}</div>
               </div>
               <span class="meta" style="white-space:nowrap;">실제 사용</span>
@@ -2394,7 +2401,7 @@
             <span class="plan-dot" style="background:${color};"></span>
             <div style="flex:1;">
               <div style="font-weight:700;">${escapeHtml(type?.name || '-')}</div>
-              <div class="meta">${p.startDate} ~ ${end}${overEnd ? ' <span style="color:var(--red);">⚠ 유효기간 초과</span>' : ''}</div>
+              <div class="meta">${p.startDate} ~ ${end} ${gapHtml}</div>
               <div class="meta">${item?.serial ? `S/N ${escapeHtml(item.serial)}` : '일련번호 없음'} · 유효기간 ${fmtDate(item?.expiry)}</div>
             </div>
             <div class="stack" style="flex-wrap:nowrap;">
