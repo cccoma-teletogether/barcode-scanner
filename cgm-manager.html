@@ -62,9 +62,16 @@
       .main { width: calc(100% - 16px); margin-top: 8px; }
     }
 
+    /* 토스트 알림 */
+    #toastContainer { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+    .toast { padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,0.15); opacity: 0; transform: translateY(8px); transition: opacity 0.2s, transform 0.2s; pointer-events: auto; white-space: nowrap; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.ok { background: #16a34a; color: #fff; }
+    .toast.err { background: #dc2626; color: #fff; }
+    .toast.info { background: #0f172a; color: #fff; }
+
     /* 사용계획 달력 */
-    .plan-layout { display: grid; grid-template-columns: 340px 1fr; gap: 12px; align-items: start; }
-    @media (max-width: 960px) { .plan-layout { grid-template-columns: 300px 1fr; } }
+    .plan-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
     @media (max-width: 840px) { .plan-layout { grid-template-columns: 1fr; } }
     .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
     .cal-nav strong { font-size: 15px; }
@@ -555,6 +562,8 @@
     </form>
   </dialog>
 
+  <div id="toastContainer"></div>
+
   <template id="rowTemplate">
     <div class="item row">
       <div>
@@ -710,6 +719,8 @@
     let planCalMonth = new Date().getMonth(); // 0-indexed
     let planSelectedInvId = null; // 현재 선택된 재고 id
     let planEditingPlanId = null; // 수정 중인 계획 id
+    let lastScannedLabelImg = ''; // 마지막 스캔 썸네일 base64
+    const _calcCache = new Map(); // calc() 렌더 사이클 캐시
 
     function loadState() {
       try {
@@ -821,6 +832,7 @@
       return state.sensorTypes.find(t => t.id === id) || DEFAULT_SENSOR_TYPE_MAP[id] || null;
     }
     function calc(item) {
+      if (_calcCache.has(item.id)) return _calcCache.get(item.id);
       const type = sensorTypeById(item.typeId) || { wearDays: 0, name: '알 수 없음', color: '#64748b' };
       const expiry = item.expiry || '';
       const shelfRemaining = expiry ? daysBetween(todayISO(), expiry) : null;
@@ -839,7 +851,7 @@
       else if (shelfWarning) status = 'shelf_warning';
       else if (item.openedAt) status = 'in_use';
       else status = 'ready';
-      return {
+      const result = {
         type,
         wearEnd,
         effective,
@@ -851,6 +863,8 @@
         wearExpired,
         status
       };
+      _calcCache.set(item.id, result);
+      return result;
     }
     function statusLabel(status) {
       return {
@@ -1364,16 +1378,29 @@
         ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         els.scanImagePreview.src = objectUrl;
         els.scanImagePreview.classList.remove('hidden');
-        setScanStatus('이미지에서 인식 중입니다.', 'busy');
-        let result =
-          await decodeWithZXingWasm(file, 'file') ||
-          await decodeWithZXingWasm(ctx.getImageData(0, 0, canvas.width, canvas.height), 'imageData');
+        setScanStatus('① ZXing-wasm 인식 중…', 'busy');
+        let result = await decodeWithZXingWasm(file, 'file');
         if (!result) {
+          setScanStatus('① ZXing-wasm (ImageData) 인식 중…', 'busy');
+          result = await decodeWithZXingWasm(ctx.getImageData(0, 0, canvas.width, canvas.height), 'imageData');
+        }
+        if (!result) {
+          setScanStatus('② 하이브리드 폴백 인식 중…', 'busy');
           result = await decodeCanvasWithHybridFallbacks(reader, canvas, els.formType.value, (index, total, label) => {
-            setScanStatus(`이미지에서 인식 중입니다. ${index}/${total}${label ? ` - ${label}` : ''}`, 'busy');
+            setScanStatus(`② 하이브리드 ${index}/${total}${label ? ` — ${label}` : ''}`, 'busy');
           });
         }
         applyScanResult(result.text);
+        // 인식 성공 시 썸네일 저장 (320px, JPEG 0.4)
+        try {
+          const thumb = document.createElement('canvas');
+          const thumbMax = 320;
+          const thumbScale = Math.min(1, thumbMax / Math.max(canvas.width, canvas.height));
+          thumb.width = Math.round(canvas.width * thumbScale);
+          thumb.height = Math.round(canvas.height * thumbScale);
+          thumb.getContext('2d').drawImage(canvas, 0, 0, thumb.width, thumb.height);
+          lastScannedLabelImg = thumb.toDataURL('image/jpeg', 0.4);
+        } catch { lastScannedLabelImg = ''; }
         finalTone = 'ok';
         finalMessage = `인식 성공${result.method ? `(${result.method})` : ''}: ${result.text}`;
       } catch (err) {
@@ -1926,6 +1953,7 @@
 
     function setView(name) {
       if (name !== 'add') stopScan();
+      if (name !== 'plan') { closePlanForm(); closePlanEdit(); }
       Object.entries(els.views).forEach(([key, node]) => {
         node.classList.toggle('hidden', key !== name);
       });
@@ -1974,7 +2002,7 @@
             </div>
             <div class="item" style="margin:0; background:#f8fafc; border-left:4px solid ${typeColor};">
               <div class="name"><span class="badge" style="background:${typeColor}22; color:${typeColor}; border-color:${typeColor}33; margin-right:6px;">■</span>${escapeHtml(type?.name || '알 수 없음')}</div>
-              <div class="meta">LOT ${escapeHtml(currentUse.lot || '-')}${currentUse.serial ? ` · S/N ${escapeHtml(currentUse.serial)}` : ''} · 개봉일 ${fmtDate(currentUse.openedAt)} · 종료일 ${fmtDate(c.wearEnd)}</div>
+              <div class="meta">${currentUse.serial ? `S/N ${escapeHtml(currentUse.serial)} · ` : ''}개봉일 ${fmtDate(currentUse.openedAt)} · 종료일 ${fmtDate(c.wearEnd)}</div>
               <div class="stack" style="margin-top:6px;">
                 <span class="status in_use">사용중</span>
                 ${c.wearExpired ? `<span class="status expired">사용기간 만료</span>` : ''}
@@ -2064,8 +2092,7 @@
           <div>
             <div class="name"><span class="badge" style="background:${typeColor}22; color:${typeColor}; border-color:${typeColor}33; margin-right:6px;">■</span>${escapeHtml(type?.name || '알 수 없음')}</div>
             <div class="meta">
-              ${escapeHtml(item.lot || '-')}${item.serial ? ` · S/N ${escapeHtml(item.serial)}` : ''}
-              · 보관 ${fmtDate(item.expiry)}${c.shelfRemaining != null ? ` (D-${c.shelfRemaining})` : ''}
+              ${item.serial ? `S/N ${escapeHtml(item.serial)} · ` : ''}보관 ${fmtDate(item.expiry)}${c.shelfRemaining != null ? ` (D-${c.shelfRemaining})` : ''}
               ${item.openedAt ? ` · 사용 ${fmtDate(c.wearEnd)}${c.wearRemaining != null ? ` (D-${c.wearRemaining})` : ''}` : ''}
             </div>
             ${planBadge ? `<div style="margin-top:4px;">${planBadge}</div>` : ''}
@@ -2116,9 +2143,7 @@
       els.inventoryList.innerHTML = list.length ? list.map(item => {
         const type = sensorTypeById(item.typeId);
         const typeColor = sensorTypeColor(type);
-        const tags = item.openedAt && !item.archived
-          ? `<span class="status in_use">사용중</span>`
-          : renderStatusTags(item.calc);
+        const tags = renderStatusTags(item.calc);
         const planBadge = planBadgeFor(item.id);
         return `
           <div class="item row" style="border-left:4px solid ${typeColor};">
@@ -2601,6 +2626,20 @@
       if (delta === 0) { closePlanEdit(); return; }
       // 이 계획 포함, 같은 종류 이후 계획 모두 밀기
       shiftPlansAfter(plan.typeId, plan.startDate, delta, null);
+      // 이동 후 겹침 검증
+      const movedPlan = state.plans.find(p => p.id === planEditingPlanId);
+      if (movedPlan) {
+        const movedEnd = planEndDate(movedPlan);
+        const overlapAfterShift = planOverlaps(movedPlan.typeId, movedPlan.startDate, movedEnd, movedPlan.id);
+        if (overlapAfterShift.length) {
+          const names = overlapAfterShift.map(p => `${p.startDate}~${planEndDate(p)}`).join(', ');
+          if (!confirm(`이동 후 같은 종류 계획과 2일 이상 겹칩니다.\n겹치는 구간: ${names}\n계속 저장할까요?`)) {
+            // 롤백
+            shiftPlansAfter(plan.typeId, movedPlan.startDate, -delta, null);
+            return;
+          }
+        }
+      }
       saveState();
       closePlanEdit();
       rerender();
@@ -2755,6 +2794,7 @@
       els.scanImagePreview.classList.add('hidden');
       els.scanImagePreview.removeAttribute('src');
       els.gs1RawInput.value = '';
+      lastScannedLabelImg = '';
     }
 
     function resetTypeForm() {
@@ -2812,13 +2852,13 @@
         <div class="kv"><div class="k">사용기간 종료일</div><div class="v">${fmtDate(c.wearEnd)}${c.wearRemaining != null ? ` <span class="meta">(D-${c.wearRemaining})</span>` : ''}</div></div>
         <div class="kv"><div class="k">실효 종료일</div><div class="v">${fmtDate(c.effective)}</div></div>
         <div class="kv"><div class="k">상태</div><div class="v"><span class="status ${c.status}">${statusLabel(c.status)}</span></div></div>
-        <div class="kv"><div class="k">경고</div><div class="v">${renderStatusTags(c)}</div></div>
         <div class="kv"><div class="k">메모</div><div class="v">${escapeHtml(item.notes || '-')}</div></div>
+        ${item.labelImg ? `<div class="kv" style="align-items:flex-start;"><div class="k">라벨 이미지</div><div class="v"><img src="${item.labelImg}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);" alt="라벨" /></div></div>` : ''}
       `;
       els.detailEdit.onclick = () => { els.detailDialog.close(); openEdit(item); };
-      els.detailUseStart.onclick = () => { updateItem(id, { openedAt: todayISO() }); els.detailDialog.close(); };
-      els.detailUseEnd.onclick = () => { updateItem(id, { archived: true }); els.detailDialog.close(); };
-      els.detailArchive.onclick = () => { updateItem(id, { archived: true }); els.detailDialog.close(); };
+      els.detailUseStart.onclick = () => { els.detailDialog.close(); updateItem(id, { openedAt: todayISO() }); showToast('사용을 시작했습니다.'); };
+      els.detailUseEnd.onclick = () => { els.detailDialog.close(); updateItem(id, { archived: true }); showToast('사용을 종료하고 폐기 처리했습니다.'); };
+      els.detailArchive.onclick = () => { els.detailDialog.close(); updateItem(id, { archived: true }); showToast('폐기 처리했습니다.'); };
       els.detailDelete.onclick = () => deleteItem(id);
       els.detailDialog.showModal();
     }
@@ -2858,7 +2898,21 @@
       return escapeHtml(s).replaceAll('`', '&#96;');
     }
 
+    function showToast(msg, tone = 'ok') {
+      const container = document.getElementById('toastContainer');
+      const el = document.createElement('div');
+      el.className = `toast ${tone}`;
+      el.textContent = msg;
+      container.appendChild(el);
+      requestAnimationFrame(() => { requestAnimationFrame(() => { el.classList.add('show'); }); });
+      setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 220);
+      }, 2200);
+    }
+
     function rerender() {
+      _calcCache.clear();
       renderToday();
       renderStats();
       renderInventory();
@@ -2928,7 +2982,8 @@
         openedAt: els.formOpenedAt.value || '',
         notes: els.formNotes.value.trim(),
         archived: false,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        ...(lastScannedLabelImg ? { labelImg: lastScannedLabelImg } : {})
       };
       const idx = state.inventory.findIndex(x => x.id === id);
       if (idx >= 0) state.inventory[idx] = { ...state.inventory[idx], ...payload };
