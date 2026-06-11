@@ -2435,14 +2435,26 @@
       renderCalendar();
     }
 
-    // 등록된 전체 사용계획 중 가장 마지막 종료일 반환 (없으면 오늘)
+    // 등록된 전체 사용계획 중 가장 마지막 종료일 반환
+    // 등록 계획 없으면 사용중 센서 종료일, 그것도 없으면 오늘
     function suggestPlanStartDate() {
-      if (!state.plans.length) return todayISO();
-      const lastEnd = state.plans.reduce((best, p) => {
-        const e = planEndDate(p);
-        return e > best ? e : best;
-      }, '');
-      return lastEnd || todayISO();
+      if (state.plans.length) {
+        const lastEnd = state.plans.reduce((best, p) => {
+          const e = planEndDate(p);
+          return e > best ? e : best;
+        }, '');
+        if (lastEnd) return lastEnd >= todayISO() ? lastEnd : todayISO();
+      }
+      // 등록 계획 없으면 사용중 센서 종료일 참조
+      const inUse = inUsePseudoPlans();
+      if (inUse.length) {
+        const lastEnd = inUse.reduce((best, p) => {
+          const e = planEndDate(p);
+          return e > best ? e : best;
+        }, '');
+        if (lastEnd && lastEnd >= todayISO()) return lastEnd;
+      }
+      return todayISO();
     }
 
     // plan 폼 열기
