@@ -2089,6 +2089,13 @@
       if ((a.openedAt || '') !== (b.openedAt || '')) {
         return (a.openedAt || '9999-12-31').localeCompare(b.openedAt || '9999-12-31');
       }
+      // 센서 종류 → 일련번호 → 등록일 순으로 안정 정렬
+      if ((a.typeId || '') !== (b.typeId || '')) {
+        return (a.typeId || '').localeCompare(b.typeId || '');
+      }
+      if ((a.serial || '') !== (b.serial || '')) {
+        return (a.serial || '').localeCompare(b.serial || '');
+      }
       return (a.createdAt || '').localeCompare(b.createdAt || '');
     }
 
