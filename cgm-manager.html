@@ -99,7 +99,10 @@
     .plan-list-item {
       display: grid; grid-template-columns: 10px 1fr auto; align-items: center;
       gap: 8px; padding: 10px 12px; border: 1px solid var(--line);
-      border-radius: var(--radius); background: white;
+      border-radius: var(--radius); background: white; transition: box-shadow 0.15s, border-color 0.15s;
+    }
+    .plan-list-item.plan-selected {
+      border-color: var(--primary); box-shadow: 0 0 0 2px #bfdbfe; background: #eff6ff;
     }
     .plan-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
     .plan-sensor-select { display: grid; gap: 8px; }
@@ -719,6 +722,7 @@
     let planCalMonth = new Date().getMonth(); // 0-indexed
     let planSelectedInvId = null; // 현재 선택된 재고 id
     let planEditingPlanId = null; // 수정 중인 계획 id
+    let planListSelectedId = null; // 달력 클릭으로 선택된 계획 id
     let lastScannedLabelImg = ''; // 마지막 스캔 썸네일 base64
     const _calcCache = new Map(); // calc() 렌더 사이클 캐시
 
@@ -2375,7 +2379,7 @@
         const overEnd = expiry && end > expiry;
         if (p._inUse) {
           return `
-            <div class="plan-list-item">
+            <div class="plan-list-item" data-plan-id="${escapeAttr(p.id)}">
               <span class="plan-dot" style="background:${color}; outline:2px solid ${color}; outline-offset:1px;"></span>
               <div>
                 <div style="font-weight:700;">${escapeHtml(type?.name || '-')} <span class="status in_use" style="font-size:11px; padding:2px 6px;">사용중</span></div>
@@ -2386,7 +2390,7 @@
             </div>`;
         }
         return `
-          <div class="plan-list-item">
+          <div class="plan-list-item" data-plan-id="${escapeAttr(p.id)}">
             <span class="plan-dot" style="background:${color};"></span>
             <div style="flex:1;">
               <div style="font-weight:700;">${escapeHtml(type?.name || '-')}</div>
@@ -2399,6 +2403,11 @@
             </div>
           </div>`;
       }).join('');
+      // 달력 클릭 선택 상태 복원
+      if (planListSelectedId) {
+        const target = els.planList.querySelector(`.plan-list-item[data-plan-id="${CSS.escape(planListSelectedId)}"]`);
+        if (target) target.classList.add('plan-selected');
+      }
     }
 
     function renderCalendar() {
@@ -2664,18 +2673,33 @@
       renderCalendar();
     });
 
+    function selectPlanInList(planId) {
+      planListSelectedId = planId || null;
+      // 기존 선택 해제
+      els.planList.querySelectorAll('.plan-list-item.plan-selected').forEach(el => el.classList.remove('plan-selected'));
+      if (!planId) return;
+      const target = els.planList.querySelector(`.plan-list-item[data-plan-id="${CSS.escape(planId)}"]`);
+      if (!target) return;
+      target.classList.add('plan-selected');
+      target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
     els.calGrid.addEventListener('click', (e) => {
+      // 막대 클릭: 해당 계획 선택
       const bar = e.target.closest('[data-plan-bar]');
-      if (!bar) return;
-      const planId = bar.dataset.planBar;
-      const allPlans = [...inUsePseudoPlans(), ...state.plans];
-      const plan = allPlans.find(p => p.id === planId);
-      if (!plan) return;
-      const type = sensorTypeById(plan.typeId);
-      const item = state.inventory.find(x => x.id === plan.invId);
-      const end = planEndDate(plan);
-      const label = plan._inUse ? '[실제 사용중]' : '[사용계획]';
-      alert(`${label} ${type?.name || '-'}\n시작: ${plan.startDate}\n종료: ${end}\nLOT: ${item?.lot || '-'}${item?.serial ? `\nS/N: ${item.serial}` : ''}\n유효기간: ${item?.expiry || '-'}`);
+      if (bar) {
+        selectPlanInList(bar.dataset.planBar);
+        return;
+      }
+      // 날짜 셀 클릭: 해당 날짜의 첫 번째 계획 선택
+      const cell = e.target.closest('.cal-day[data-date]');
+      if (!cell) return;
+      const dateStr = cell.dataset.date;
+      const covering = allActivePlans().filter(p => {
+        const end = planEndDate(p);
+        return dateStr >= p.startDate && dateStr <= end;
+      }).sort((a, b) => a.startDate.localeCompare(b.startDate));
+      selectPlanInList(covering.length ? covering[0].id : null);
     });
 
     // ── 달력 드래그앤드롭 ────────────────────────────────────────────────────
