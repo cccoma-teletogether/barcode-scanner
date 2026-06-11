@@ -37,7 +37,7 @@
     .title .sub { color: var(--muted); font-size: 12px; }
     .today { color: var(--muted); font-size: 12px; white-space: nowrap; }
     .nav {
-      display: grid; grid-template-columns: repeat(5, 1fr);
+      display: grid; grid-template-columns: repeat(6, 1fr);
       gap: 8px; padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--line);
     }
     .nav button {
@@ -58,8 +58,57 @@
     @media (max-width: 640px) {
       .topbar { align-items: flex-start; flex-direction: column; }
       .grid.cols-4, .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; }
-      .nav { grid-template-columns: repeat(2, 1fr); }
+      .nav { grid-template-columns: repeat(3, 1fr); }
       .main { width: calc(100% - 16px); margin-top: 8px; }
+    }
+
+    /* 사용계획 달력 */
+    .plan-layout { display: grid; grid-template-columns: 340px 1fr; gap: 12px; align-items: start; }
+    @media (max-width: 960px) { .plan-layout { grid-template-columns: 300px 1fr; } }
+    @media (max-width: 840px) { .plan-layout { grid-template-columns: 1fr; } }
+    .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .cal-nav strong { font-size: 15px; }
+    .cal-grid {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      gap: 2px; font-size: 12px;
+    }
+    .cal-header { text-align: center; color: var(--muted); padding: 4px 0; font-size: 11px; }
+    .cal-day {
+      min-height: 64px; border: 1px solid var(--line); border-radius: 4px;
+      padding: 2px 4px; position: relative; background: white; vertical-align: top;
+    }
+    .cal-day.other-month { background: #f8fafc; color: #b0b8c9; }
+    .cal-day.today-cell { border-color: var(--primary); background: #eff6ff; }
+    .cal-day.today-cell .cal-day-num { color: var(--primary); font-weight: 700; }
+    .cal-day-num { font-size: 11px; color: var(--muted); display: block; margin-bottom: 2px; }
+    .plan-bar {
+      display: block; font-size: 10px; padding: 1px 4px; border-radius: 3px;
+      margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      cursor: grab; line-height: 1.5; color: white; user-select: none;
+    }
+    .plan-bar.dragging { opacity: 0.4 !important; cursor: grabbing; }
+    .plan-bar.expiry-warn { outline: 2px solid var(--red); outline-offset: -1px; }
+    .cal-day.drag-over { background: #dbeafe; border-color: var(--primary); }
+    .plan-list-item {
+      display: grid; grid-template-columns: 10px 1fr auto; align-items: center;
+      gap: 8px; padding: 10px 12px; border: 1px solid var(--line);
+      border-radius: var(--radius); background: white;
+    }
+    .plan-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .plan-sensor-select { display: grid; gap: 8px; }
+    .plan-sensor-btn {
+      display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+      border: 1px solid var(--line); border-radius: var(--radius);
+      background: white; cursor: pointer; text-align: left; width: 100%;
+    }
+    .plan-sensor-btn.selected { border-color: var(--primary); background: #eff6ff; }
+    .plan-sensor-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .plan-sensor-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .plan-form-row { display: grid; gap: 8px; margin-top: 10px; }
+    .plan-overlap-warn { color: var(--red); font-size: 12px; padding: 6px 10px; background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius); }
+    .cal-today-line {
+      position: absolute; top: 0; bottom: 0; width: 2px; background: var(--primary);
+      opacity: 0.5; pointer-events: none;
     }
     .stat {
       padding: 14px; border-radius: var(--radius); background: var(--panel-2); border: 1px solid var(--line);
@@ -228,6 +277,7 @@
       <button class="active" data-view="dashboard">대시보드</button>
       <button data-view="inventory">재고 목록</button>
       <button data-view="add">재고 추가</button>
+      <button data-view="plan">사용계획</button>
       <button data-view="worklog">작업기록</button>
       <button data-view="settings">설정</button>
     </div>
@@ -358,6 +408,63 @@
               <button type="submit" class="btn primary">저장</button>
             </div>
           </form>
+        </div>
+      </section>
+
+      <section id="view-plan" class="hidden">
+        <div class="plan-layout">
+          <!-- 좌측: 센서 선택 + 계획 추가 폼 -->
+          <div class="grid" style="gap:12px;">
+            <div class="panel section">
+              <strong>미개봉 재고 선택</strong>
+              <div class="mini" style="margin:6px 0 10px;">사용 시작할 센서를 선택하세요</div>
+              <div id="planSensorList" class="plan-sensor-select"></div>
+            </div>
+            <div class="panel section" id="planFormPanel" style="display:none;">
+              <strong id="planFormTitle">사용 시작일 지정</strong>
+              <div class="plan-form-row">
+                <label>
+                  <div class="mini">사용 시작일</div>
+                  <input id="planStartDate" type="date" />
+                </label>
+                <div id="planOverlapWarn" class="plan-overlap-warn" style="display:none;"></div>
+                <div class="form-actions" style="padding-top:4px;">
+                  <button class="btn" type="button" id="planCancelBtn">취소</button>
+                  <button class="btn primary" type="button" id="planConfirmBtn">달력에 추가</button>
+                </div>
+              </div>
+            </div>
+            <div class="panel section" id="planEditPanel" style="display:none;">
+              <strong id="planEditTitle">시작일 수정</strong>
+              <div class="plan-form-row">
+                <label>
+                  <div class="mini">새 시작일</div>
+                  <input id="planEditDate" type="date" />
+                </label>
+                <div class="mini" id="planEditShiftInfo" style="color:var(--primary);"></div>
+                <div class="form-actions" style="padding-top:4px;">
+                  <button class="btn" type="button" id="planEditCancelBtn">취소</button>
+                  <button class="btn primary" type="button" id="planEditConfirmBtn">저장 (이후 계획 함께 밀기)</button>
+                </div>
+              </div>
+            </div>
+            <div class="panel section">
+              <div class="stack" style="justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <strong>등록된 계획</strong>
+                <span class="badge" id="planCount">0건</span>
+              </div>
+              <div class="list" id="planList"></div>
+            </div>
+          </div>
+          <!-- 우측: 달력 -->
+          <div class="panel section">
+            <div class="cal-nav">
+              <button class="btn small" id="calPrev">&#8249;</button>
+              <strong id="calTitle"></strong>
+              <button class="btn small" id="calNext">&#8250;</button>
+            </div>
+            <div class="cal-grid" id="calGrid"></div>
+          </div>
         </div>
       </section>
 
@@ -516,6 +623,7 @@
         dashboard: document.getElementById('view-dashboard'),
         inventory: document.getElementById('view-inventory'),
         add: document.getElementById('view-add'),
+        plan: document.getElementById('view-plan'),
         worklog: document.getElementById('view-worklog'),
         settings: document.getElementById('view-settings')
       },
@@ -567,7 +675,26 @@
       detailUseEnd: document.getElementById('detailUseEnd'),
       detailArchive: document.getElementById('detailArchive'),
       detailDelete: document.getElementById('detailDelete'),
-      rowTemplate: document.getElementById('rowTemplate')
+      rowTemplate: document.getElementById('rowTemplate'),
+      planSensorList: document.getElementById('planSensorList'),
+      planFormPanel: document.getElementById('planFormPanel'),
+      planFormTitle: document.getElementById('planFormTitle'),
+      planStartDate: document.getElementById('planStartDate'),
+      planOverlapWarn: document.getElementById('planOverlapWarn'),
+      planCancelBtn: document.getElementById('planCancelBtn'),
+      planConfirmBtn: document.getElementById('planConfirmBtn'),
+      planEditPanel: document.getElementById('planEditPanel'),
+      planEditTitle: document.getElementById('planEditTitle'),
+      planEditDate: document.getElementById('planEditDate'),
+      planEditShiftInfo: document.getElementById('planEditShiftInfo'),
+      planEditCancelBtn: document.getElementById('planEditCancelBtn'),
+      planEditConfirmBtn: document.getElementById('planEditConfirmBtn'),
+      planCount: document.getElementById('planCount'),
+      planList: document.getElementById('planList'),
+      calPrev: document.getElementById('calPrev'),
+      calNext: document.getElementById('calNext'),
+      calTitle: document.getElementById('calTitle'),
+      calGrid: document.getElementById('calGrid')
     };
 
     let state = loadState();
@@ -575,6 +702,10 @@
     let scanReader = null;
     let barcodeDetector = null;
     let changelogEntries = structuredClone(DEFAULT_CHANGELOG_ENTRIES);
+    let planCalYear = new Date().getFullYear();
+    let planCalMonth = new Date().getMonth(); // 0-indexed
+    let planSelectedInvId = null; // 현재 선택된 재고 id
+    let planEditingPlanId = null; // 수정 중인 계획 id
 
     function loadState() {
       try {
@@ -584,6 +715,7 @@
             sensorTypes: normalizeSensorTypes(structuredClone(DEFAULT_SENSOR_TYPES)),
             inventory: [],
             workLogs: [],
+            plans: [],
             settings: { ...DEFAULT_SETTINGS }
           };
         }
@@ -594,6 +726,7 @@
           ),
           inventory: Array.isArray(parsed.inventory) ? parsed.inventory : [],
           workLogs: Array.isArray(parsed.workLogs) ? parsed.workLogs : [],
+          plans: Array.isArray(parsed.plans) ? parsed.plans : [],
           settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) }
         };
       } catch {
@@ -601,6 +734,7 @@
           sensorTypes: normalizeSensorTypes(structuredClone(DEFAULT_SENSOR_TYPES)),
           inventory: [],
           workLogs: [],
+          plans: [],
           settings: { ...DEFAULT_SETTINGS }
         };
       }
@@ -680,7 +814,7 @@
       return s;
     }
     function sensorTypeById(id) {
-      return state.sensorTypes.find(t => t.id === id) || null;
+      return state.sensorTypes.find(t => t.id === id) || DEFAULT_SENSOR_TYPE_MAP[id] || null;
     }
     function calc(item) {
       const type = sensorTypeById(item.typeId) || { wearDays: 0, name: '알 수 없음', color: '#64748b' };
@@ -1793,6 +1927,7 @@
       });
       els.viewButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === name));
       if (name === 'add') focusFormForNew();
+      if (name === 'plan') renderPlan();
     }
 
     function renderToday() {
@@ -1835,10 +1970,11 @@
             </div>
             <div class="item" style="margin:0; background:#f8fafc; border-left:4px solid ${typeColor};">
               <div class="name"><span class="badge" style="background:${typeColor}22; color:${typeColor}; border-color:${typeColor}33; margin-right:6px;">■</span>${escapeHtml(type?.name || '알 수 없음')}</div>
-              <div class="meta">LOT ${escapeHtml(currentUse.lot || '-')} · 개봉일 ${fmtDate(currentUse.openedAt)} · 종료일 ${fmtDate(c.wearEnd)}</div>
+              <div class="meta">LOT ${escapeHtml(currentUse.lot || '-')}${currentUse.serial ? ` · S/N ${escapeHtml(currentUse.serial)}` : ''} · 개봉일 ${fmtDate(currentUse.openedAt)} · 종료일 ${fmtDate(c.wearEnd)}</div>
               <div class="stack" style="margin-top:6px;">
                 <span class="status in_use">사용중</span>
                 ${c.wearExpired ? `<span class="status expired">사용기간 만료</span>` : ''}
+                ${planBadgeFor(currentUse.id)}
               </div>
             </div>
           </div>
@@ -1902,19 +2038,33 @@
       return tags.join(' ');
     }
 
+    function planBadgeFor(invId) {
+      // 실제 계획 우선, 없으면 사용중 가상 계획 확인
+      const plan = state.plans.find(p => p.invId === invId)
+        || inUsePseudoPlans().find(p => p.invId === invId);
+      if (!plan) return '';
+      const end = planEndDate(plan);
+      if (plan._inUse) {
+        return `<span class="badge" style="background:#dcfce7; color:#15803d; border-color:#bbf7d0;">사용중 ${plan.startDate} ~ ${end}</span>`;
+      }
+      return `<span class="badge" style="background:#eff6ff; color:var(--primary); border-color:#bfdbfe;">계획 ${plan.startDate} ~ ${end}</span>`;
+    }
+
     function renderMiniItem(item) {
       const c = item.calc;
       const type = sensorTypeById(item.typeId);
       const typeColor = sensorTypeColor(type);
+      const planBadge = planBadgeFor(item.id);
       return `
         <div class="item" style="grid-template-columns: 1fr auto; align-items: center; border-left:4px solid ${typeColor};">
           <div>
             <div class="name"><span class="badge" style="background:${typeColor}22; color:${typeColor}; border-color:${typeColor}33; margin-right:6px;">■</span>${escapeHtml(type?.name || '알 수 없음')}</div>
             <div class="meta">
-              ${escapeHtml(item.lot || '-')}
+              ${escapeHtml(item.lot || '-')}${item.serial ? ` · S/N ${escapeHtml(item.serial)}` : ''}
               · 보관 ${fmtDate(item.expiry)}${c.shelfRemaining != null ? ` (D-${c.shelfRemaining})` : ''}
               ${item.openedAt ? ` · 사용 ${fmtDate(c.wearEnd)}${c.wearRemaining != null ? ` (D-${c.wearRemaining})` : ''}` : ''}
             </div>
+            ${planBadge ? `<div style="margin-top:4px;">${planBadge}</div>` : ''}
           </div>
           <span class="status ${c.status}">${statusLabel(c.status)}</span>
         </div>
@@ -1955,13 +2105,17 @@
       els.inventoryList.innerHTML = list.length ? list.map(item => {
         const type = sensorTypeById(item.typeId);
         const typeColor = sensorTypeColor(type);
-        const tags = renderStatusTags(item.calc);
+        const tags = item.openedAt && !item.archived
+          ? `<span class="status in_use">사용중</span>`
+          : renderStatusTags(item.calc);
+        const planBadge = planBadgeFor(item.id);
         return `
           <div class="item row" style="border-left:4px solid ${typeColor};">
             <div>
               <div class="name"><span class="badge" style="background:${typeColor}22; color:${typeColor}; border-color:${typeColor}33; margin-right:6px;">■</span>${escapeHtml(type?.name || '알 수 없음')}</div>
               <div class="meta">${escapeHtml(item.lot || '-')} · ${type ? `${type.wearDays}일 사용` : '사용기간 없음'}</div>
-              <div class="stack" style="margin-top:6px;">${tags}</div>
+              <div class="meta">유효기간 ${fmtDate(item.expiry) || '-'}${item.serial ? ` · S/N ${escapeHtml(item.serial)}` : ''}</div>
+              <div class="stack" style="margin-top:6px;">${tags}${planBadge}</div>
             </div>
             <div>
               <div>${fmtDate(item.expiry)}</div>
@@ -2056,13 +2210,499 @@
       `).join('');
     }
 
+    // ── 사용계획 ──────────────────────────────────────────────────────────
+
+    function planEndDate(plan) {
+      const type = sensorTypeById(plan.typeId);
+      if (!type) return plan.startDate;
+      return addDays(plan.startDate, type.wearDays - 1) || plan.startDate;
+    }
+
+    function planOverlaps(typeId, startDate, endDate, excludePlanId) {
+      // 동일 센서 종류끼리만 겹침 검사. 교체 시 ±1일 겹침은 정상이므로 2일 이상 겹칠 때만 반환
+      return state.plans.filter(p => {
+        if (p.id === excludePlanId) return false;
+        if (p.typeId !== typeId) return false;
+        const pe = planEndDate(p);
+        if (startDate > pe || endDate < p.startDate) return false;
+        // 겹치는 일수 계산
+        const overlapStart = startDate > p.startDate ? startDate : p.startDate;
+        const overlapEnd = endDate < pe ? endDate : pe;
+        const days = daysBetween(overlapStart, overlapEnd) + 1;
+        return days > 1;
+      });
+    }
+
+    // 기준 계획 이후(같은 종류, 시작일 >= 기준)의 계획들을 delta일만큼 밀기
+    function shiftPlansAfter(typeId, fromDate, deltaDay, excludePlanId) {
+      state.plans = state.plans.map(p => {
+        if (p.id === excludePlanId) return p;
+        if (p.typeId !== typeId) return p;
+        if (p.startDate < fromDate) return p;
+        return { ...p, startDate: addDays(p.startDate, deltaDay) };
+      });
+    }
+
+    function renderPlanOverlapWarn(typeId, startDate, endDate, excludePlanId) {
+      const overlaps = planOverlaps(typeId, startDate, endDate, excludePlanId);
+      if (!overlaps.length) {
+        els.planOverlapWarn.style.display = 'none';
+        return false;
+      }
+      const names = overlaps.map(p => {
+        const t = sensorTypeById(p.typeId);
+        return `${t?.name || p.typeId} (${p.startDate} ~ ${planEndDate(p)})`;
+      });
+      els.planOverlapWarn.style.display = '';
+      els.planOverlapWarn.textContent = `같은 종류 센서와 기간이 겹칩니다: ${names.join(', ')}`;
+      return true;
+    }
+
+    function renderPlanSensorList() {
+      const ready = state.inventory
+        .filter(it => {
+          const c = calc(it);
+          return c.status === 'ready' || c.status === 'shelf_warning';
+        })
+        .map(it => ({ ...it, _calc: calc(it) }))
+        .sort((a, b) => {
+          const ar = a._calc.shelfRemaining ?? Infinity;
+          const br = b._calc.shelfRemaining ?? Infinity;
+          return ar - br;
+        });
+      if (!ready.length) {
+        els.planSensorList.innerHTML = '<div class="mini">미개봉 재고가 없습니다.</div>';
+        return;
+      }
+      // 이미 계획에 등록된 재고 제외
+      const plannedIds = new Set(state.plans.map(p => p.invId));
+      const unplanned = ready.filter(item => !plannedIds.has(item.id));
+      if (!unplanned.length) {
+        els.planSensorList.innerHTML = '<div class="mini">추가할 미개봉 재고가 없습니다.</div>';
+        return;
+      }
+      els.planSensorList.innerHTML = unplanned.map(item => {
+        const type = sensorTypeById(item.typeId);
+        const color = sensorTypeColor(type);
+        const c = item._calc;
+        const selected = planSelectedInvId === item.id;
+        return `
+          <button class="plan-sensor-btn${selected ? ' selected' : ''}"
+            data-plan-inv="${escapeAttr(item.id)}"
+            draggable="true" title="달력으로 드래그해서 날짜 지정">
+            <span class="plan-sensor-dot" style="background:${color};"></span>
+            <span style="flex:1; text-align:left;">
+              <span style="font-weight:700;">${escapeHtml(type?.name || '-')}</span>
+              <span class="meta" style="display:block;">LOT ${escapeHtml(item.lot || '-')}${item.serial ? ` · S/N ${escapeHtml(item.serial)}` : ''} · 유효기간 ${fmtDate(item.expiry)}</span>
+              <span class="meta" style="color:var(--primary);">↔ 달력에 드래그</span>
+            </span>
+            <span class="meta">${c.shelfRemaining != null ? `D-${c.shelfRemaining}` : ''}</span>
+          </button>`;
+      }).join('');
+    }
+
+    // 사용중인 재고를 가상 plan 형태로 반환 (id는 'inuse_<invId>')
+    function inUsePseudoPlans() {
+      return state.inventory
+        .filter(it => it.openedAt && !it.archived)
+        .map(it => ({
+          id: `inuse_${it.id}`,
+          invId: it.id,
+          typeId: it.typeId,
+          startDate: it.openedAt,
+          _inUse: true
+        }));
+    }
+
+    function renderPlanList() {
+      const inUsePlans = inUsePseudoPlans();
+      const plans = [...inUsePlans, ...state.plans].sort((a, b) => a.startDate.localeCompare(b.startDate));
+      els.planCount.textContent = `${plans.length}건`;
+      if (!plans.length) {
+        els.planList.innerHTML = '<div class="mini">등록된 계획이 없습니다.</div>';
+        return;
+      }
+      els.planList.innerHTML = plans.map(p => {
+        const type = sensorTypeById(p.typeId);
+        const color = sensorTypeColor(type);
+        const end = planEndDate(p);
+        const item = state.inventory.find(x => x.id === p.invId);
+        const expiry = item?.expiry || '';
+        const overEnd = expiry && end > expiry;
+        if (p._inUse) {
+          return `
+            <div class="plan-list-item">
+              <span class="plan-dot" style="background:${color}; outline:2px solid ${color}; outline-offset:1px;"></span>
+              <div>
+                <div style="font-weight:700;">${escapeHtml(type?.name || '-')} <span class="status in_use" style="font-size:11px; padding:2px 6px;">사용중</span></div>
+                <div class="meta">${p.startDate} ~ ${end}${overEnd ? ' <span style="color:var(--red);">⚠ 유효기간 초과</span>' : ''}</div>
+                <div class="meta">LOT ${escapeHtml(item?.lot || '-')}${item?.serial ? ` · S/N ${escapeHtml(item.serial)}` : ''}</div>
+              </div>
+              <span class="meta" style="white-space:nowrap;">실제 사용</span>
+            </div>`;
+        }
+        return `
+          <div class="plan-list-item">
+            <span class="plan-dot" style="background:${color};"></span>
+            <div style="flex:1;">
+              <div style="font-weight:700;">${escapeHtml(type?.name || '-')}</div>
+              <div class="meta">${p.startDate} ~ ${end}${overEnd ? ' <span style="color:var(--red);">⚠ 유효기간 초과</span>' : ''}</div>
+              <div class="meta">LOT ${escapeHtml(item?.lot || '-')}${item?.serial ? ` · S/N ${escapeHtml(item.serial)}` : ''}</div>
+            </div>
+            <div class="stack" style="flex-wrap:nowrap;">
+              <button class="btn small" data-edit-plan="${escapeAttr(p.id)}">수정</button>
+              <button class="btn small danger" data-del-plan="${escapeAttr(p.id)}">삭제</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function renderCalendar() {
+      const today = todayISO();
+      const year = planCalYear, month = planCalMonth;
+      els.calTitle.textContent = `${year}년 ${month + 1}월`;
+
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const startDow = firstDay.getDay(); // 0=일
+      const daysInMonth = lastDay.getDate();
+
+      const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
+      let html = DAYS.map(d => `<div class="cal-header">${d}</div>`).join('');
+
+      // 이전 달 빈 셀
+      for (let i = 0; i < startDow; i++) {
+        const prev = new Date(year, month, -startDow + i + 1);
+        html += `<div class="cal-day other-month"><span class="cal-day-num">${prev.getDate()}</span></div>`;
+      }
+
+      // 이번 달 날짜별 계획 막대 계산
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
+        const isToday = dateStr === today;
+
+        // 이 날짜와 겹치는 계획들 (사용중 포함)
+        const allPlans = [...inUsePseudoPlans(), ...state.plans];
+        const bars = allPlans.filter(p => {
+          const end = planEndDate(p);
+          return dateStr >= p.startDate && dateStr <= end;
+        }).sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+        const barsHtml = bars.map(p => {
+          const type = sensorTypeById(p.typeId);
+          const color = sensorTypeColor(type);
+          const end = planEndDate(p);
+          const item = state.inventory.find(x => x.id === p.invId);
+          const expiry = item?.expiry || '';
+          const overEnd = expiry && end > expiry;
+          const isStart = dateStr === p.startDate;
+          const label = isStart ? (type?.name || '-') : '';
+          const opacity = isStart ? '1' : '0.7';
+          const inUseExtra = p._inUse ? `outline:1px solid ${color};outline-offset:-1px;` : '';
+          const styleAttr = `background:${color};opacity:${opacity};${inUseExtra}`;
+          const titleAttr = escapeAttr(`${type?.name || '-'}${p._inUse ? ' [사용중]' : ''} ${p.startDate}~${end}`);
+          const draggable = p._inUse ? '' : 'draggable="true"';
+          return `<span class="plan-bar${overEnd ? ' expiry-warn' : ''}" style="${styleAttr}" title="${titleAttr}" data-plan-bar="${escapeAttr(p.id)}" ${draggable}>${escapeHtml(label)}</span>`;
+        }).join('');
+
+        html += `<div class="cal-day${isToday ? ' today-cell' : ''}" data-date="${dateStr}">
+          <span class="cal-day-num">${d}</span>
+          ${barsHtml}
+        </div>`;
+      }
+
+      // 다음 달 빈 셀 (7의 배수 맞춤)
+      const total = startDow + daysInMonth;
+      const remain = total % 7 === 0 ? 0 : 7 - (total % 7);
+      for (let i = 1; i <= remain; i++) {
+        html += `<div class="cal-day other-month"><span class="cal-day-num">${i}</span></div>`;
+      }
+
+      els.calGrid.innerHTML = html;
+    }
+
+    function renderPlan() {
+      renderPlanSensorList();
+      renderPlanList();
+      renderCalendar();
+    }
+
+    // 같은 종류의 마지막 계획 종료일 다음날 반환 (없으면 오늘)
+    function suggestPlanStartDate(typeId) {
+      const samePlans = state.plans.filter(p => p.typeId === typeId);
+      const inUse = inUsePseudoPlans().filter(p => p.typeId === typeId);
+      const all = [...samePlans, ...inUse];
+      if (!all.length) return todayISO();
+      const lastEnd = all.reduce((best, p) => {
+        const e = planEndDate(p);
+        return e > best ? e : best;
+      }, '');
+      return lastEnd || todayISO();
+    }
+
+    // plan 폼 열기
+    function openPlanForm(invId) {
+      planSelectedInvId = invId;
+      const item = state.inventory.find(x => x.id === invId);
+      const type = sensorTypeById(item?.typeId);
+      els.planFormTitle.textContent = `사용 시작일 지정 — ${type?.name || '-'}`;
+      els.planStartDate.value = suggestPlanStartDate(item?.typeId);
+      els.planOverlapWarn.style.display = 'none';
+      els.planFormPanel.style.display = '';
+      renderPlanSensorList();
+      checkPlanOverlapUI();
+    }
+
+    function checkPlanOverlapUI() {
+      if (!planSelectedInvId) return;
+      const item = state.inventory.find(x => x.id === planSelectedInvId);
+      if (!item) return;
+      const type = sensorTypeById(item.typeId);
+      const startDate = els.planStartDate.value;
+      if (!startDate || !type) return;
+      const endDate = addDays(startDate, type.wearDays - 1);
+      renderPlanOverlapWarn(item.typeId, startDate, endDate, null);
+    }
+
+    function closePlanForm() {
+      planSelectedInvId = null;
+      els.planFormPanel.style.display = 'none';
+      els.planOverlapWarn.style.display = 'none';
+      renderPlanSensorList();
+    }
+
+    // ── 사용계획 이벤트 ────────────────────────────────────────────────────
+
+    els.planSensorList.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-plan-inv]');
+      if (!btn || btn.disabled) return;
+      openPlanForm(btn.dataset.planInv);
+    });
+
+    els.planStartDate.addEventListener('input', checkPlanOverlapUI);
+
+    els.planCancelBtn.addEventListener('click', closePlanForm);
+
+    els.planConfirmBtn.addEventListener('click', () => {
+      if (!planSelectedInvId) return;
+      const item = state.inventory.find(x => x.id === planSelectedInvId);
+      if (!item) return;
+      const type = sensorTypeById(item.typeId);
+      const startDate = els.planStartDate.value;
+      if (!startDate) { alert('시작일을 선택해주세요.'); return; }
+      const endDate = addDays(startDate, (type?.wearDays || 1) - 1);
+      const overlaps = planOverlaps(item.typeId, startDate, endDate, null);
+      if (overlaps.length) {
+        const ok = confirm(`같은 종류의 센서 사용계획과 기간이 겹칩니다.\n계속 추가할까요?`);
+        if (!ok) return;
+      }
+      const plan = {
+        id: uid('plan'),
+        invId: item.id,
+        typeId: item.typeId,
+        startDate,
+        createdAt: new Date().toISOString()
+      };
+      state.plans.push(plan);
+      saveState();
+      closePlanForm();
+      rerender();
+    });
+
+    function openPlanEdit(planId) {
+      const plan = state.plans.find(p => p.id === planId);
+      if (!plan) return;
+      planEditingPlanId = planId;
+      const type = sensorTypeById(plan.typeId);
+      els.planEditTitle.textContent = `시작일 수정 — ${type?.name || '-'} (${plan.startDate})`;
+      els.planEditDate.value = plan.startDate;
+      updatePlanEditShiftInfo();
+      els.planEditPanel.style.display = '';
+      // 추가 폼 닫기
+      closePlanForm();
+    }
+
+    function updatePlanEditShiftInfo() {
+      if (!planEditingPlanId) return;
+      const plan = state.plans.find(p => p.id === planEditingPlanId);
+      if (!plan) return;
+      const newStart = els.planEditDate.value;
+      if (!newStart) { els.planEditShiftInfo.textContent = ''; return; }
+      const delta = daysBetween(plan.startDate, newStart);
+      // 같은 종류 이후 계획 수
+      const affected = state.plans.filter(p => p.id !== planEditingPlanId && p.typeId === plan.typeId && p.startDate >= plan.startDate).length;
+      if (delta === 0) { els.planEditShiftInfo.textContent = '날짜 변경 없음'; return; }
+      const dir = delta > 0 ? `+${delta}일 뒤로` : `${delta}일 앞으로`;
+      els.planEditShiftInfo.textContent = `이 계획 포함, 같은 종류 이후 계획 ${affected + 1}건이 ${dir} 밀립니다.`;
+    }
+
+    function closePlanEdit() {
+      planEditingPlanId = null;
+      els.planEditPanel.style.display = 'none';
+      els.planEditShiftInfo.textContent = '';
+    }
+
+    els.planList.addEventListener('click', (e) => {
+      const editBtn = e.target.closest('button[data-edit-plan]');
+      if (editBtn) { openPlanEdit(editBtn.dataset.editPlan); return; }
+
+      const delBtn = e.target.closest('button[data-del-plan]');
+      if (!delBtn) return;
+      const planId = delBtn.dataset.delPlan;
+      const plan = state.plans.find(p => p.id === planId);
+      if (!plan) return;
+      const type = sensorTypeById(plan.typeId);
+      if (!confirm(`계획을 삭제할까요?\n${type?.name || '-'} · ${plan.startDate} ~ ${planEndDate(plan)}`)) return;
+      state.plans = state.plans.filter(p => p.id !== planId);
+      if (planEditingPlanId === planId) closePlanEdit();
+      saveState();
+      rerender();
+    });
+
+    els.planEditDate.addEventListener('input', updatePlanEditShiftInfo);
+
+    els.planEditCancelBtn.addEventListener('click', closePlanEdit);
+
+    els.planEditConfirmBtn.addEventListener('click', () => {
+      if (!planEditingPlanId) return;
+      const plan = state.plans.find(p => p.id === planEditingPlanId);
+      if (!plan) return;
+      const newStart = els.planEditDate.value;
+      if (!newStart) { alert('날짜를 선택해주세요.'); return; }
+      const delta = daysBetween(plan.startDate, newStart);
+      if (delta === 0) { closePlanEdit(); return; }
+      // 이 계획 포함, 같은 종류 이후 계획 모두 밀기
+      shiftPlansAfter(plan.typeId, plan.startDate, delta, null);
+      saveState();
+      closePlanEdit();
+      rerender();
+    });
+
+    els.calPrev.addEventListener('click', () => {
+      planCalMonth--;
+      if (planCalMonth < 0) { planCalMonth = 11; planCalYear--; }
+      renderCalendar();
+    });
+
+    els.calNext.addEventListener('click', () => {
+      planCalMonth++;
+      if (planCalMonth > 11) { planCalMonth = 0; planCalYear++; }
+      renderCalendar();
+    });
+
+    els.calGrid.addEventListener('click', (e) => {
+      const bar = e.target.closest('[data-plan-bar]');
+      if (!bar) return;
+      const planId = bar.dataset.planBar;
+      const allPlans = [...inUsePseudoPlans(), ...state.plans];
+      const plan = allPlans.find(p => p.id === planId);
+      if (!plan) return;
+      const type = sensorTypeById(plan.typeId);
+      const item = state.inventory.find(x => x.id === plan.invId);
+      const end = planEndDate(plan);
+      const label = plan._inUse ? '[실제 사용중]' : '[사용계획]';
+      alert(`${label} ${type?.name || '-'}\n시작: ${plan.startDate}\n종료: ${end}\nLOT: ${item?.lot || '-'}${item?.serial ? `\nS/N: ${item.serial}` : ''}\n유효기간: ${item?.expiry || '-'}`);
+    });
+
+    // ── 달력 드래그앤드롭 ────────────────────────────────────────────────────
+
+    let dragPlanId = null;       // 막대 이동 드래그
+    let dragSensorInvId = null;  // 센서 목록 → 달력 드래그
+
+    // 센서 목록에서 드래그 시작
+    els.planSensorList.addEventListener('dragstart', (e) => {
+      const btn = e.target.closest('button[data-plan-inv]');
+      if (!btn || btn.disabled) return;
+      dragSensorInvId = btn.dataset.planInv;
+      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.setData('text/plain', dragSensorInvId);
+    });
+
+    els.planSensorList.addEventListener('dragend', () => {
+      dragSensorInvId = null;
+    });
+
+    // 달력 막대 드래그 시작
+    els.calGrid.addEventListener('dragstart', (e) => {
+      const bar = e.target.closest('[data-plan-bar]');
+      if (!bar) return;
+      const planId = bar.dataset.planBar;
+      const plan = state.plans.find(p => p.id === planId);
+      if (!plan) return;
+      dragPlanId = planId;
+      bar.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', planId);
+    });
+
+    els.calGrid.addEventListener('dragend', (e) => {
+      const bar = e.target.closest('[data-plan-bar]');
+      if (bar) bar.classList.remove('dragging');
+      document.querySelectorAll('.cal-day.drag-over').forEach(el => el.classList.remove('drag-over'));
+      dragPlanId = null;
+    });
+
+    els.calGrid.addEventListener('dragover', (e) => {
+      const cell = e.target.closest('.cal-day[data-date]');
+      if (!cell || (!dragPlanId && !dragSensorInvId)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = dragSensorInvId ? 'copy' : 'move';
+      document.querySelectorAll('.cal-day.drag-over').forEach(el => el.classList.remove('drag-over'));
+      cell.classList.add('drag-over');
+    });
+
+    els.calGrid.addEventListener('dragleave', (e) => {
+      const cell = e.target.closest('.cal-day[data-date]');
+      if (cell) cell.classList.remove('drag-over');
+    });
+
+    els.calGrid.addEventListener('drop', (e) => {
+      e.preventDefault();
+      document.querySelectorAll('.cal-day.drag-over').forEach(el => el.classList.remove('drag-over'));
+      const cell = e.target.closest('.cal-day[data-date]');
+      if (!cell) return;
+      const newStart = cell.dataset.date;
+
+      // 센서 목록 → 달력: 새 계획 추가
+      if (dragSensorInvId) {
+        const item = state.inventory.find(x => x.id === dragSensorInvId);
+        if (!item) return;
+        const type = sensorTypeById(item.typeId);
+        const endDate = addDays(newStart, (type?.wearDays || 1) - 1);
+        const overlaps = planOverlaps(item.typeId, newStart, endDate, null);
+        if (overlaps.length) {
+          const ok = confirm(`같은 종류의 센서 사용계획과 기간이 겹칩니다.\n계속 추가할까요?`);
+          if (!ok) return;
+        }
+        state.plans.push({
+          id: uid('plan'),
+          invId: item.id,
+          typeId: item.typeId,
+          startDate: newStart,
+          createdAt: new Date().toISOString()
+        });
+        saveState();
+        rerender();
+        return;
+      }
+
+      // 달력 막대 이동
+      if (dragPlanId) {
+        const plan = state.plans.find(p => p.id === dragPlanId);
+        if (!plan || newStart === plan.startDate) return;
+        const delta = daysBetween(plan.startDate, newStart);
+        shiftPlansAfter(plan.typeId, plan.startDate, delta, null);
+        saveState();
+        rerender();
+      }
+    });
+
+    // ── 대시보드 ───────────────────────────────────────────────────────────
+
     function renderDashboard() {
       renderToday();
       renderStats();
-      renderInventory();
       renderChangelog();
-      renderSettings();
-      renderTypeSelects();
     }
 
     function focusFormForNew() {
@@ -2184,10 +2824,13 @@
     }
 
     function rerender() {
-      renderDashboard();
+      renderToday();
+      renderStats();
       renderInventory();
+      renderChangelog();
       renderSettings();
       renderTypeSelects();
+      renderPlan();
     }
 
     els.viewButtons.forEach(btn => btn.addEventListener('click', () => setView(btn.dataset.view)));
@@ -2336,6 +2979,7 @@
           sensorTypes: Array.isArray(parsed.sensorTypes) && parsed.sensorTypes.length ? parsed.sensorTypes : structuredClone(DEFAULT_SENSOR_TYPES),
           inventory: Array.isArray(parsed.inventory) ? parsed.inventory : [],
           workLogs: Array.isArray(parsed.workLogs) ? parsed.workLogs : [],
+          plans: Array.isArray(parsed.plans) ? parsed.plans : [],
           settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) }
         };
         saveState();
