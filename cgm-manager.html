@@ -2262,6 +2262,7 @@
     function renderPlanSensorList() {
       const ready = state.inventory
         .filter(it => {
+          if (it.openedAt) return false; // 사용중 센서 제외
           const c = calc(it);
           return c.status === 'ready' || c.status === 'shelf_warning';
         })
