@@ -321,7 +321,7 @@
         </div>
         <div class="panel section">
           <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <strong>사용 통계</strong>
+            <strong>유효기간 현황</strong>
             <span class="badge" id="usageStatTotal"></span>
           </div>
           <div id="usageStats"></div>
@@ -2170,53 +2170,54 @@
       const totalBadge = document.getElementById('usageStatTotal');
       if (!host) return;
 
-      const used = items.filter(it => it.openedAt);
-      totalBadge.textContent = `누적 ${used.length}개`;
+      // 미개봉·비폐기 재고의 유효기간 월별 분포
+      const unopened = items.filter(it => !it.openedAt && !it.archived && it.expiry);
+      totalBadge.textContent = `미개봉 ${unopened.length}개`;
 
-      // 최근 6개월 월별 사용 시작 수
       const now = new Date();
+      const thisMonthKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
       const months = [];
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        months.push({ key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`, label: `${d.getMonth() + 1}월`, count: 0 });
+      for (let i = 0; i < 6; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+        months.push({
+          key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`,
+          label: i === 0 ? '이번달' : `${d.getMonth() + 1}월`,
+          count: 0, types: {}
+        });
       }
       const monthMap = Object.fromEntries(months.map(m => [m.key, m]));
-      used.forEach(it => {
-        const key = (it.openedAt || '').slice(0, 7);
-        if (monthMap[key]) monthMap[key].count++;
+      let expired = 0; // 이미 만료
+      let later = 0;   // 6개월 이후 만료
+      unopened.forEach(it => {
+        const key = (it.expiry || '').slice(0, 7);
+        if (key < thisMonthKey) { expired++; return; }
+        const m = monthMap[key];
+        if (!m) { later++; return; }
+        m.count++;
+        m.types[it.typeId] = (m.types[it.typeId] || 0) + 1;
       });
       const maxCount = Math.max(1, ...months.map(m => m.count));
 
-      // 센서 종류별 누적 사용 수
-      const byType = state.sensorTypes
-        .map(type => ({ type, count: used.filter(it => it.typeId === type.id).length }))
-        .filter(x => x.count > 0)
-        .sort((a, b) => b.count - a.count);
-
-      // 미사용 만료 손실 (개봉 없이 만료/폐기)
-      const wasted = items.filter(it => !it.openedAt && (it.archived || it.calc.shelfExpired)).length;
+      // 월 사용량 대비 참고치: 한 달 물리적 소진 가능량은 보통 2~3개
+      const barColor = (count) => count > 3 ? 'var(--orange)' : 'var(--primary)';
+      const typeTip = (m) => Object.entries(m.types)
+        .map(([tid, n]) => `${sensorTypeById(tid)?.name || tid} ${n}개`).join(', ');
 
       host.innerHTML = `
-        <div class="mini" style="margin-bottom:6px;">월별 사용 시작 (최근 6개월)</div>
+        <div class="mini" style="margin-bottom:6px;">월별 유효기간 도래 센서 수 (미개봉 기준, 향후 6개월)</div>
         <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:6px; align-items:end; height:72px; margin-bottom:4px;">
           ${months.map(m => `
-            <div style="display:flex; flex-direction:column; align-items:center; gap:2px; height:100%; justify-content:flex-end;">
+            <div style="display:flex; flex-direction:column; align-items:center; gap:2px; height:100%; justify-content:flex-end;" title="${escapeAttr(typeTip(m))}">
               <span class="mini" style="font-size:10px;">${m.count || ''}</span>
-              <div style="width:100%; max-width:36px; background:var(--primary); opacity:${m.count ? 1 : 0.15}; border-radius:3px 3px 0 0; height:${Math.max(4, (m.count / maxCount) * 48)}px;"></div>
+              <div style="width:100%; max-width:36px; background:${barColor(m.count)}; opacity:${m.count ? 1 : 0.15}; border-radius:3px 3px 0 0; height:${Math.max(4, (m.count / maxCount) * 48)}px;"></div>
             </div>`).join('')}
         </div>
-        <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:12px;">
+        <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:10px;">
           ${months.map(m => `<div class="mini" style="text-align:center; font-size:10px;">${m.label}</div>`).join('')}
         </div>
-        ${byType.length ? `
-          <div class="mini" style="margin-bottom:6px;">센서 종류별 누적 사용</div>
-          <div class="stack" style="margin-bottom:12px;">
-            ${byType.map(({ type, count }) => {
-              const color = sensorTypeColor(type);
-              return `<span class="badge" style="background:${color}14; color:${color}; border-color:${color}33;">${escapeHtml(type.name)} ${count}개</span>`;
-            }).join('')}
-          </div>` : ''}
-        ${wasted ? `<div class="mini" style="color:var(--red);">⚠ 개봉 없이 만료·폐기된 센서 ${wasted}개</div>` : ''}
+        <div class="mini" style="color:var(--muted); margin-bottom:6px;">월 3개 초과(주황)는 한 달 소진 가능량(2~3개)을 넘어 미리 분산 사용이 필요합니다.</div>
+        ${later ? `<div class="mini" style="color:var(--muted);">6개월 이후 만료 ${later}개</div>` : ''}
+        ${expired ? `<div class="mini" style="color:var(--red);">⚠ 이미 유효기간이 지난 미개봉 센서 ${expired}개</div>` : ''}
       `;
     }
 
