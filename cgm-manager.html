@@ -4,6 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="CGM 센서 재고를 관리하는 개인용 앱" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="CGMMgr" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect fill='%232563eb' width='64' height='64' rx='12'/><text x='32' y='44' font-size='32' text-anchor='middle' fill='white' font-family='Arial'>🩸</text></svg>" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%232563eb' width='180' height='180' rx='36'/><text x='90' y='120' font-size='88' text-anchor='middle' fill='white' font-family='Arial'>🩸</text></svg>" />
   <title>CGMMgr - CGM 재고관리</title>
   <style>
     :root {
@@ -311,6 +319,13 @@
             <div class="list" id="typeSummary"></div>
           </div>
         </div>
+        <div class="panel section">
+          <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <strong>사용 통계</strong>
+            <span class="badge" id="usageStatTotal"></span>
+          </div>
+          <div id="usageStats"></div>
+        </div>
       </section>
 
       <section id="view-inventory" class="panel section hidden">
@@ -507,6 +522,11 @@
                 <input id="alertDays" type="number" min="1" step="1" style="max-width: 160px;" />
                 <button class="btn primary" id="saveAlertDays" type="button">저장</button>
               </div>
+              <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);">
+                <div class="mini" style="margin-bottom: 8px;">교체일 알림</div>
+                <button class="btn" id="notifyToggle" type="button">알림 켜기</button>
+                <div class="mini" style="margin-top: 6px; color: var(--muted);">앱 실행 중 사용중 센서 종료일(D-1, D-0)과 유효기간 임박을 알립니다.</div>
+              </div>
             </div>
             <div class="panel section" style="box-shadow:none;">
               <strong>백업 / 복원</strong>
@@ -514,6 +534,13 @@
                 <button class="btn" id="exportData" type="button">JSON 내보내기</button>
                 <label class="btn" for="importFile" style="cursor:pointer;">JSON 불러오기</label>
                 <input id="importFile" type="file" accept="application/json" class="hidden" />
+              </div>
+              <div style="margin-top: 12px;">
+                <div class="stack">
+                  <button class="btn" id="restoreAutoBackup" type="button">자동 백업 복원</button>
+                  <span class="mini" id="autoBackupInfo" style="color: var(--muted);"></span>
+                </div>
+                <div class="mini" style="margin-top: 6px; color: var(--muted);">하루 1회 자동으로 백업 사본을 저장합니다. (라벨 이미지 제외)</div>
               </div>
               <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line);">
                 <div class="mini" style="margin-bottom: 8px; color: var(--red);">위험 구역</div>
@@ -744,13 +771,17 @@
           };
         }
         const parsed = JSON.parse(raw);
+        const inventory = Array.isArray(parsed.inventory) ? parsed.inventory : [];
+        const invIds = new Set(inventory.map(it => it.id));
+        const plans = (Array.isArray(parsed.plans) ? parsed.plans : [])
+          .filter(p => invIds.has(p.invId)); // 삭제된 재고를 가리키는 고아 계획 정리
         return {
           sensorTypes: normalizeSensorTypes(
             Array.isArray(parsed.sensorTypes) && parsed.sensorTypes.length ? parsed.sensorTypes : structuredClone(DEFAULT_SENSOR_TYPES)
           ),
-          inventory: Array.isArray(parsed.inventory) ? parsed.inventory : [],
+          inventory,
           workLogs: Array.isArray(parsed.workLogs) ? parsed.workLogs : [],
-          plans: Array.isArray(parsed.plans) ? parsed.plans : [],
+          plans,
           settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) }
         };
       } catch {
@@ -797,8 +828,54 @@
       return type.color || DEFAULT_SENSOR_TYPE_MAP[type.id]?.color || '#64748b';
     }
 
+    let _quotaWarned = false; // 용량 경고 중복 방지 (세션당 1회)
     function saveState() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const json = JSON.stringify(state);
+      try {
+        localStorage.setItem(STORAGE_KEY, json);
+      } catch (err) {
+        alert('저장 공간이 가득 차서 저장에 실패했습니다.\n설정 탭에서 JSON 백업 후, 오래된 재고(라벨 이미지 포함)를 삭제해주세요.');
+        return;
+      }
+      // localStorage 약 5MB 제한 — 80% 초과 시 경고
+      if (!_quotaWarned && json.length > 4 * 1024 * 1024) {
+        _quotaWarned = true;
+        showToast('저장 공간의 80%를 사용 중입니다. JSON 백업을 권장합니다.', 'err');
+      }
+      autoBackup();
+    }
+
+    const AUTO_BACKUP_KEY = 'cgm_auto_backup';
+    function autoBackup() {
+      try {
+        const prev = JSON.parse(localStorage.getItem(AUTO_BACKUP_KEY) || 'null');
+        if (prev?.timestamp && Date.now() - prev.timestamp < 86400000) return; // 24시간 내 백업 존재
+        const backup = {
+          timestamp: Date.now(),
+          sensorTypes: state.sensorTypes,
+          // 라벨 이미지는 용량이 커서 백업에서 제외
+          inventory: state.inventory.map(({ labelImg, ...rest }) => rest),
+          workLogs: state.workLogs,
+          plans: state.plans,
+          settings: state.settings
+        };
+        localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify(backup));
+      } catch {} // 백업 실패는 본 저장에 영향 주지 않음
+    }
+
+    // 24시간 체크 없이 즉시 백업 (데이터 초기화 직전 등)
+    function forceAutoBackup() {
+      try {
+        const backup = {
+          timestamp: Date.now(),
+          sensorTypes: state.sensorTypes,
+          inventory: state.inventory.map(({ labelImg, ...rest }) => rest),
+          workLogs: state.workLogs,
+          plans: state.plans,
+          settings: state.settings
+        };
+        localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify(backup));
+      } catch {}
     }
 
     function uid(prefix = 'id') {
@@ -1400,10 +1477,10 @@
           });
         }
         applyScanResult(result.text);
-        // 인식 성공 시 썸네일 저장 (320px, JPEG 0.4)
+        // 인식 성공 시 썸네일 저장 (200px, JPEG 0.4) — localStorage 용량 절약
         try {
           const thumb = document.createElement('canvas');
-          const thumbMax = 320;
+          const thumbMax = 200;
           const thumbScale = Math.min(1, thumbMax / Math.max(canvas.width, canvas.height));
           thumb.width = Math.round(canvas.width * thumbScale);
           thumb.height = Math.round(canvas.height * thumbScale);
@@ -2084,6 +2161,63 @@
           renderStats();
         });
       });
+
+      renderUsageStats(items);
+    }
+
+    function renderUsageStats(items) {
+      const host = document.getElementById('usageStats');
+      const totalBadge = document.getElementById('usageStatTotal');
+      if (!host) return;
+
+      const used = items.filter(it => it.openedAt);
+      totalBadge.textContent = `누적 ${used.length}개`;
+
+      // 최근 6개월 월별 사용 시작 수
+      const now = new Date();
+      const months = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push({ key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`, label: `${d.getMonth() + 1}월`, count: 0 });
+      }
+      const monthMap = Object.fromEntries(months.map(m => [m.key, m]));
+      used.forEach(it => {
+        const key = (it.openedAt || '').slice(0, 7);
+        if (monthMap[key]) monthMap[key].count++;
+      });
+      const maxCount = Math.max(1, ...months.map(m => m.count));
+
+      // 센서 종류별 누적 사용 수
+      const byType = state.sensorTypes
+        .map(type => ({ type, count: used.filter(it => it.typeId === type.id).length }))
+        .filter(x => x.count > 0)
+        .sort((a, b) => b.count - a.count);
+
+      // 미사용 만료 손실 (개봉 없이 만료/폐기)
+      const wasted = items.filter(it => !it.openedAt && (it.archived || it.calc.shelfExpired)).length;
+
+      host.innerHTML = `
+        <div class="mini" style="margin-bottom:6px;">월별 사용 시작 (최근 6개월)</div>
+        <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:6px; align-items:end; height:72px; margin-bottom:4px;">
+          ${months.map(m => `
+            <div style="display:flex; flex-direction:column; align-items:center; gap:2px; height:100%; justify-content:flex-end;">
+              <span class="mini" style="font-size:10px;">${m.count || ''}</span>
+              <div style="width:100%; max-width:36px; background:var(--primary); opacity:${m.count ? 1 : 0.15}; border-radius:3px 3px 0 0; height:${Math.max(4, (m.count / maxCount) * 48)}px;"></div>
+            </div>`).join('')}
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:12px;">
+          ${months.map(m => `<div class="mini" style="text-align:center; font-size:10px;">${m.label}</div>`).join('')}
+        </div>
+        ${byType.length ? `
+          <div class="mini" style="margin-bottom:6px;">센서 종류별 누적 사용</div>
+          <div class="stack" style="margin-bottom:12px;">
+            ${byType.map(({ type, count }) => {
+              const color = sensorTypeColor(type);
+              return `<span class="badge" style="background:${color}14; color:${color}; border-color:${color}33;">${escapeHtml(type.name)} ${count}개</span>`;
+            }).join('')}
+          </div>` : ''}
+        ${wasted ? `<div class="mini" style="color:var(--red);">⚠ 개봉 없이 만료·폐기된 센서 ${wasted}개</div>` : ''}
+      `;
     }
 
     function emptyRow(text) {
@@ -2211,6 +2345,15 @@
 
     function renderSettings() {
       els.alertDays.value = state.settings.alertDays ?? 30;
+      if (typeof updateNotifyToggleUI === 'function') updateNotifyToggleUI();
+      const backupInfo = document.getElementById('autoBackupInfo');
+      if (backupInfo) {
+        let backup = null;
+        try { backup = JSON.parse(localStorage.getItem('cgm_auto_backup') || 'null'); } catch {}
+        backupInfo.textContent = backup?.timestamp
+          ? `마지막 백업: ${new Date(backup.timestamp).toLocaleString('ko-KR')}`
+          : '백업 없음';
+      }
       els.sensorTypeTotal.textContent = `${state.sensorTypes.length}종`;
       els.typeList.innerHTML = state.sensorTypes.map(type => `
         <div class="item" style="grid-template-columns: 1fr auto; align-items: center;">
@@ -2936,6 +3079,7 @@
       );
       if (!ok) return;
       state.inventory = state.inventory.filter(x => x.id !== id);
+      state.plans = state.plans.filter(p => p.invId !== id); // 관련 사용계획도 함께 정리
       saveState();
       selectedId = null;
       rerender();
@@ -3100,6 +3244,83 @@
       rerender();
     });
 
+    // ── 교체일 알림 ─────────────────────────────────────────────────────────
+
+    function updateNotifyToggleUI() {
+      const btn = document.getElementById('notifyToggle');
+      if (!btn) return;
+      if (!('Notification' in window)) {
+        btn.textContent = '이 브라우저는 알림 미지원';
+        btn.disabled = true;
+        return;
+      }
+      const enabled = state.settings.notifyEnabled && Notification.permission === 'granted';
+      btn.textContent = enabled ? '알림 끄기' : '알림 켜기';
+      btn.classList.toggle('primary', !enabled);
+    }
+
+    document.getElementById('notifyToggle').addEventListener('click', async () => {
+      if (!('Notification' in window)) return;
+      const enabled = state.settings.notifyEnabled && Notification.permission === 'granted';
+      if (enabled) {
+        state.settings.notifyEnabled = false;
+        saveState();
+        showToast('알림을 껐습니다.', 'info');
+      } else {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+          showToast('브라우저 알림 권한이 거부되었습니다.', 'err');
+          return;
+        }
+        state.settings.notifyEnabled = true;
+        saveState();
+        showToast('알림을 켰습니다.');
+        checkAndNotify();
+      }
+      updateNotifyToggleUI();
+    });
+
+    function checkAndNotify() {
+      if (!('Notification' in window)) return;
+      if (!state.settings.notifyEnabled || Notification.permission !== 'granted') return;
+      const today = todayISO();
+      const notifiedKey = 'cgm_notified';
+      let notified = {};
+      try { notified = JSON.parse(localStorage.getItem(notifiedKey) || '{}'); } catch {}
+      // 오늘 이외의 기록은 정리
+      Object.keys(notified).forEach(k => { if (notified[k] !== today) delete notified[k]; });
+
+      const alertDays = Number(state.settings.alertDays || 30);
+      state.inventory.filter(it => !it.archived).forEach(it => {
+        const c = calc(it);
+        const type = sensorTypeById(it.typeId);
+        const name = type?.name || '센서';
+        // 사용중 센서 종료 임박 (D-1, D-0)
+        if (it.openedAt && c.wearRemaining != null && c.wearRemaining >= 0 && c.wearRemaining <= 1) {
+          const tag = `wear_${it.id}_${c.wearRemaining}`;
+          if (!notified[tag]) {
+            new Notification('CGM 센서 교체 예정', {
+              body: `${name} 사용기간이 ${c.wearRemaining === 0 ? '오늘' : '내일'} 종료됩니다. (종료일 ${c.wearEnd})`,
+              tag
+            });
+            notified[tag] = today;
+          }
+        }
+        // 미개봉 센서 유효기간 임박
+        if (!it.openedAt && c.shelfRemaining != null && c.shelfRemaining >= 0 && c.shelfRemaining <= alertDays) {
+          const tag = `shelf_${it.id}`;
+          if (!notified[tag]) {
+            new Notification('CGM 센서 유효기간 임박', {
+              body: `${name} 유효기간이 D-${c.shelfRemaining}입니다. (${it.expiry})`,
+              tag
+            });
+            notified[tag] = today;
+          }
+        }
+      });
+      try { localStorage.setItem(notifiedKey, JSON.stringify(notified)); } catch {}
+    }
+
     els.exportData.addEventListener('click', () => {
       const data = {
         version: 1,
@@ -3118,6 +3339,7 @@
     document.getElementById('resetData').addEventListener('click', () => {
       if (!confirm('모든 재고·사용계획·설정이 삭제됩니다.\n정말 초기화할까요?')) return;
       if (!confirm('두 번째 확인입니다.\n되돌릴 수 없습니다. 계속할까요?')) return;
+      forceAutoBackup(); // 초기화 직전 마지막 사본 보존 (자동 백업 복원으로 되돌리기 가능)
       localStorage.removeItem(STORAGE_KEY);
       state = {
         sensorTypes: structuredClone(DEFAULT_SENSOR_TYPES),
@@ -3131,6 +3353,29 @@
       saveState();
       rerender();
       showToast('데이터가 초기화되었습니다.', 'info');
+    });
+
+    document.getElementById('restoreAutoBackup').addEventListener('click', () => {
+      let backup = null;
+      try { backup = JSON.parse(localStorage.getItem(AUTO_BACKUP_KEY) || 'null'); } catch {}
+      if (!backup?.timestamp) {
+        showToast('저장된 자동 백업이 없습니다.', 'err');
+        return;
+      }
+      const when = new Date(backup.timestamp).toLocaleString('ko-KR');
+      if (!confirm(`${when} 시점의 자동 백업으로 복원할까요?\n현재 데이터는 덮어써집니다. (라벨 이미지는 백업에 포함되지 않음)`)) return;
+      state = {
+        sensorTypes: normalizeSensorTypes(
+          Array.isArray(backup.sensorTypes) && backup.sensorTypes.length ? backup.sensorTypes : structuredClone(DEFAULT_SENSOR_TYPES)
+        ),
+        inventory: Array.isArray(backup.inventory) ? backup.inventory : [],
+        workLogs: Array.isArray(backup.workLogs) ? backup.workLogs : [],
+        plans: Array.isArray(backup.plans) ? backup.plans : [],
+        settings: { ...DEFAULT_SETTINGS, ...(backup.settings || {}) }
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); // saveState() 우회 — 복원본을 autoBackup으로 덮지 않음
+      rerender();
+      showToast('자동 백업에서 복원했습니다.');
     });
 
     els.importFile.addEventListener('change', async () => {
@@ -3171,6 +3416,16 @@
     loadChangelog();
     setView('dashboard');
     renderToday();
+
+    // PWA 서비스 워커 등록 (HTTPS 또는 localhost에서만 동작)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    }
+
+    // 교체일 알림: 시작 시 1회 + 1시간마다 재확인
+    updateNotifyToggleUI();
+    checkAndNotify();
+    setInterval(checkAndNotify, 3600000);
   </script>
 </body>
 </html>
