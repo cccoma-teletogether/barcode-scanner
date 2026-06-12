@@ -103,6 +103,7 @@
     }
     .plan-bar.dragging { opacity: 0.4 !important; cursor: grabbing; }
     .plan-bar.expiry-warn { outline: 2px solid var(--red); outline-offset: -1px; }
+    .plan-bar.expiry-risk { outline: 2px solid var(--orange); outline-offset: -1px; }
     .cal-day.drag-over { background: #dbeafe; border-color: var(--primary); }
     .plan-list-item {
       display: grid; grid-template-columns: 10px 1fr auto; align-items: center;
@@ -917,6 +918,11 @@
     function sensorTypeById(id) {
       return state.sensorTypes.find(t => t.id === id) || DEFAULT_SENSOR_TYPE_MAP[id] || null;
     }
+    // 유효기간 하루 전까지 개봉하면 유효기간이 지나도 사용종료일까지 사용 가능한 센서
+    const EXPIRY_GRACE_TYPE_IDS = new Set(['caresens_air', 'barogen_fit']);
+    function expiryGraceApplies(typeId, startDate, expiry) {
+      return EXPIRY_GRACE_TYPE_IDS.has(typeId) && !!startDate && !!expiry && startDate < expiry;
+    }
     function calc(item) {
       if (_calcCache.has(item.id)) return _calcCache.get(item.id);
       const type = sensorTypeById(item.typeId) || { wearDays: 0, name: '알 수 없음', color: '#64748b' };
@@ -926,10 +932,14 @@
       const wearRemaining = wearEnd ? daysBetween(todayISO(), wearEnd) : null;
       const today = todayISO();
       const alertDays = Number(state.settings.alertDays || 30);
-      const shelfWarning = shelfRemaining != null && shelfRemaining >= 0 && shelfRemaining <= alertDays;
-      const shelfExpired = shelfRemaining != null && shelfRemaining < 0;
+      // 유효기간 전 개봉한 유예 대상 센서는 유효기간 경과와 무관하게 사용종료일까지 사용 가능
+      const grace = expiryGraceApplies(item.typeId, item.openedAt, expiry);
+      const shelfWarning = !grace && shelfRemaining != null && shelfRemaining >= 0 && shelfRemaining <= alertDays;
+      const shelfExpired = !grace && shelfRemaining != null && shelfRemaining < 0;
       const wearExpired = item.openedAt && wearRemaining != null && wearRemaining < 0;
-      const effective = item.archived ? expiry || wearEnd || '' : minDate(expiry, wearEnd);
+      const effective = item.archived ? expiry || wearEnd || '' : (grace ? wearEnd : minDate(expiry, wearEnd));
+      // 유예 적용 중 사용기간이 유효기간을 넘는 경우: 사용은 가능하나 경고 표시 대상
+      const expiryRisk = grace && !item.archived && wearEnd && expiry && wearEnd > expiry;
       const remaining = effective ? daysBetween(today, effective) : null;
       let status = 'ready';
       if (item.archived) status = 'archived';
@@ -947,6 +957,7 @@
         shelfWarning,
         shelfExpired,
         wearExpired,
+        expiryRisk,
         status
       };
       _calcCache.set(item.id, result);
@@ -2229,6 +2240,7 @@
       const tags = [];
       if (calcInfo.shelfExpired) tags.push(`<span class="status expired">유효기간 만료</span>`);
       else if (calcInfo.shelfWarning) tags.push(`<span class="status shelf_warning">유효기간 임박</span>`);
+      if (calcInfo.expiryRisk) tags.push(`<span class="status shelf_warning">유효기간 초과위험</span>`);
       if (calcInfo.wearExpired) tags.push(`<span class="status expired">사용기간 만료</span>`);
       if (!tags.length) tags.push(`<span class="status ${calcInfo.status}">${statusLabel(calcInfo.status)}</span>`);
       return tags.join(' ');
@@ -2546,10 +2558,14 @@
         const item = state.inventory.find(x => x.id === p.invId);
         const expiry = item?.expiry || '';
         const overEnd = expiry && end > expiry;
+        // 유효기간 전 시작하는 유예 대상(케어센스에어·바로잰핏)은 초과해도 사용 가능 → 위험 경고로 표시
+        const grace = expiryGraceApplies(p.typeId, p.startDate, expiry);
         // 종료일~유효기간 간격
         const gapDays = expiry && !overEnd ? daysBetween(end, expiry) : null;
         const gapHtml = overEnd
-          ? `<span style="color:var(--red); font-size:11px;">⚠ 유효기간 ${daysBetween(expiry, end)}일 초과</span>`
+          ? (grace
+            ? `<span style="color:var(--orange); font-size:11px;">⚠ 유효기간 초과위험 (${daysBetween(expiry, end)}일, 종료일까지 사용 가능)</span>`
+            : `<span style="color:var(--red); font-size:11px;">⚠ 유효기간 ${daysBetween(expiry, end)}일 초과</span>`)
           : gapDays != null
             ? `<span style="color:${gapDays <= 3 ? 'var(--orange)' : 'var(--green)'}; font-size:11px;">종료→유효기간 여유 ${gapDays}일</span>`
             : '';
@@ -2624,14 +2640,16 @@
           const item = state.inventory.find(x => x.id === p.invId);
           const expiry = item?.expiry || '';
           const overEnd = expiry && end > expiry;
+          const grace = expiryGraceApplies(p.typeId, p.startDate, expiry);
+          const warnClass = overEnd ? (grace ? ' expiry-risk' : ' expiry-warn') : '';
           const isStart = dateStr === p.startDate;
           const label = isStart ? (type?.name || '-') : '';
           const opacity = isStart ? '1' : '0.7';
           const inUseExtra = p._inUse ? `outline:1px solid ${color};outline-offset:-1px;` : '';
           const styleAttr = `background:${color};opacity:${opacity};${inUseExtra}`;
-          const titleAttr = escapeAttr(`${type?.name || '-'}${p._inUse ? ' [사용중]' : ''} ${p.startDate}~${end}`);
+          const titleAttr = escapeAttr(`${type?.name || '-'}${p._inUse ? ' [사용중]' : ''} ${p.startDate}~${end}${overEnd ? (grace ? ' ⚠유효기간 초과위험' : ' ⚠유효기간 초과') : ''}`);
           const draggable = p._inUse ? '' : 'draggable="true"';
-          return `<span class="plan-bar${overEnd ? ' expiry-warn' : ''}" style="${styleAttr}" title="${titleAttr}" data-plan-bar="${escapeAttr(p.id)}" ${draggable}>${escapeHtml(label)}</span>`;
+          return `<span class="plan-bar${warnClass}" style="${styleAttr}" title="${titleAttr}" data-plan-bar="${escapeAttr(p.id)}" ${draggable}>${escapeHtml(label)}</span>`;
         }).join('');
 
         html += `<div class="cal-day${isToday ? ' today-cell' : ''}" data-date="${dateStr}">
