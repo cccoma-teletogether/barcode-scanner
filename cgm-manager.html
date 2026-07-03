@@ -2438,6 +2438,7 @@
     function planEndDate(plan) {
       const type = sensorTypeById(plan.typeId);
       if (!type) return plan.startDate;
+      // 시작일 저녁 부착 기준: 종료일 = 시작일 + 사용일수 (종료일 저녁까지 사용 가능)
       return addDays(plan.startDate, type.wearDays) || plan.startDate;
     }
 
