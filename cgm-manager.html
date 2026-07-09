@@ -2327,6 +2327,7 @@
               <div class="name"><span class="badge" style="background:${typeColor}22; color:${typeColor}; border-color:${typeColor}33; margin-right:6px;">■</span>${escapeHtml(type?.name || '알 수 없음')}</div>
               <div class="meta">${item.serial ? `S/N ${escapeHtml(item.serial)}` : '일련번호 없음'} · ${type ? `${type.wearDays}일 사용` : '사용기간 없음'}</div>
               <div class="meta">유효기간 ${fmtDate(item.expiry) || '-'}</div>
+              ${item.openedAt ? `<div class="meta">사용기간 ${fmtDate(item.openedAt)} ~ ${fmtDate(item.calc.wearEnd)}</div>` : ''}
               <div class="stack" style="margin-top:6px;">${tags}</div>
               ${planBadge ? `<div style="margin-top:4px;">${planBadge}</div>` : ''}
             </div>
@@ -2335,7 +2336,7 @@
               <div class="meta">보관 ${item.calc.shelfRemaining != null ? `D-${item.calc.shelfRemaining}` : '-'}</div>
             </div>
             <div>
-              <div>${fmtDate(item.calc.wearEnd)}</div>
+              <div>${item.openedAt ? `${fmtDate(item.openedAt)} ~ ${fmtDate(item.calc.wearEnd)}` : fmtDate(item.calc.wearEnd)}</div>
               <div class="meta">사용 ${item.openedAt && item.calc.wearRemaining != null ? `D-${item.calc.wearRemaining}` : '-'}</div>
             </div>
             <div><span class="status ${item.calc.status}">${statusLabel(item.calc.status)}</span></div>
@@ -2437,7 +2438,7 @@
     function planEndDate(plan) {
       const type = sensorTypeById(plan.typeId);
       if (!type) return plan.startDate;
-      return addDays(plan.startDate, type.wearDays - 1) || plan.startDate;
+      return addDays(plan.startDate, type.wearDays) || plan.startDate;
     }
 
     function planOverlaps(typeId, startDate, endDate, excludePlanId) {
@@ -2716,7 +2717,7 @@
       const type = sensorTypeById(item.typeId);
       const startDate = els.planStartDate.value;
       if (!startDate || !type) return;
-      const endDate = addDays(startDate, type.wearDays - 1);
+      const endDate = addDays(startDate, type.wearDays);
       renderPlanOverlapWarn(item.typeId, startDate, endDate, null);
     }
 
@@ -2746,7 +2747,7 @@
       const type = sensorTypeById(item.typeId);
       const startDate = els.planStartDate.value;
       if (!startDate) { alert('시작일을 선택해주세요.'); return; }
-      const endDate = addDays(startDate, (type?.wearDays || 1) - 1);
+      const endDate = addDays(startDate, type?.wearDays || 1);
       const overlaps = planOverlaps(item.typeId, startDate, endDate, null);
       if (overlaps.length) {
         const ok = confirm(`같은 종류의 센서 사용계획과 기간이 겹칩니다.\n계속 추가할까요?`);
@@ -2960,7 +2961,7 @@
         const item = state.inventory.find(x => x.id === dragSensorInvId);
         if (!item) return;
         const type = sensorTypeById(item.typeId);
-        const endDate = addDays(newStart, (type?.wearDays || 1) - 1);
+        const endDate = addDays(newStart, type?.wearDays || 1);
         const overlaps = planOverlaps(item.typeId, newStart, endDate, null);
         if (overlaps.length) {
           const ok = confirm(`같은 종류의 센서 사용계획과 기간이 겹칩니다.\n계속 추가할까요?`);
