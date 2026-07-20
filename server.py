@@ -5,7 +5,7 @@ import webbrowser
 
 
 ROOT = Path(__file__).resolve().parent
-PORT = int(os.environ.get("CGMMGR_PORT", "8000"))
+PORT = int(os.environ.get("PORT") or os.environ.get("CGMMGR_PORT") or "8000")
 
 
 class Handler(SimpleHTTPRequestHandler):

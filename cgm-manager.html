@@ -84,13 +84,14 @@
     .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
     .cal-nav strong { font-size: 15px; }
     .cal-grid {
-      display: grid; grid-template-columns: repeat(7, 1fr);
+      display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 76px;
       gap: 2px; font-size: 12px;
     }
     .cal-header { text-align: center; color: var(--muted); padding: 4px 0; font-size: 11px; }
     .cal-day {
-      min-height: 64px; border: 1px solid var(--line); border-radius: 4px;
+      height: 76px; border: 1px solid var(--line); border-radius: 4px;
       padding: 2px 4px; position: relative; background: white; vertical-align: top;
+      overflow-y: auto; box-sizing: border-box;
     }
     .cal-day.other-month { background: #f8fafc; color: #b0b8c9; }
     .cal-day.today-cell { border-color: var(--primary); background: #eff6ff; }
