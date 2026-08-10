@@ -544,6 +544,30 @@
                 </div>
                 <div class="mini" style="margin-top: 6px; color: var(--muted);">하루 1회 자동으로 백업 사본을 저장합니다. (라벨 이미지 제외)</div>
               </div>
+              <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);">
+                <div class="mini" style="margin-bottom: 8px;">백업 저장 폴더</div>
+                <div class="stack">
+                  <button class="btn" id="chooseBackupDir" type="button">폴더 선택</button>
+                  <button class="btn" id="clearBackupDir" type="button">해제</button>
+                </div>
+                <div class="mini" style="margin-top: 6px; color: var(--muted);" id="backupDirInfo">기본 다운로드 폴더 사용 중</div>
+                <div class="mini" style="margin-top: 4px; color: var(--muted);">폴더를 선택하면 "JSON 내보내기" 시 해당 폴더에 바로 저장합니다. (Chrome/Edge만 지원)</div>
+              </div>
+              <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);">
+                <div class="mini" style="margin-bottom: 8px;">저장 용량 확인</div>
+                <button class="btn" id="checkStorageUsage" type="button">용량 확인 (콘솔에 상세 출력)</button>
+                <div class="mini" style="margin-top: 6px; color: var(--muted);" id="storageUsageInfo"></div>
+              </div>
+              <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);">
+                <div class="mini" style="margin-bottom: 8px;">오래된 항목 정리</div>
+                <div class="stack">
+                  <span class="mini">폐기된 지</span>
+                  <input id="cleanupDays" type="number" min="1" step="1" value="180" style="max-width: 90px;" />
+                  <span class="mini">일 이상 지난 항목</span>
+                </div>
+                <button class="btn danger" id="cleanupOldItems" type="button" style="margin-top:8px;">정리 대상 확인 후 삭제</button>
+                <div class="mini" style="margin-top: 6px; color: var(--muted);">폐기(사용 종료) 처리된 재고 중 종료일이 오래된 항목을 삭제해 용량을 확보합니다. 삭제 전 자동 백업을 남깁니다.</div>
+              </div>
               <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line);">
                 <div class="mini" style="margin-bottom: 8px; color: var(--red);">위험 구역</div>
                 <button class="btn danger" id="resetData" type="button">데이터 초기화</button>
@@ -704,6 +728,13 @@
       saveAlertDays: document.getElementById('saveAlertDays'),
       exportData: document.getElementById('exportData'),
       importFile: document.getElementById('importFile'),
+      chooseBackupDir: document.getElementById('chooseBackupDir'),
+      clearBackupDir: document.getElementById('clearBackupDir'),
+      backupDirInfo: document.getElementById('backupDirInfo'),
+      checkStorageUsage: document.getElementById('checkStorageUsage'),
+      storageUsageInfo: document.getElementById('storageUsageInfo'),
+      cleanupDays: document.getElementById('cleanupDays'),
+      cleanupOldItems: document.getElementById('cleanupOldItems'),
       sensorTypeTotal: document.getElementById('sensorTypeTotal'),
       typeForm: document.getElementById('typeForm'),
       editingTypeId: document.getElementById('editingTypeId'),
@@ -878,6 +909,101 @@
         };
         localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify(backup));
       } catch {}
+    }
+
+    // ── 저장 용량 확인 ────────────────────────────────────────────────────
+    function checkStorageUsage() {
+      const rows = [];
+      let total = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        const val = localStorage.getItem(key) || '';
+        const bytes = new Blob([val]).size;
+        total += bytes;
+        rows.push({ key, bytes, KB: Math.round(bytes / 1024 * 10) / 10 });
+      }
+      rows.sort((a, b) => b.bytes - a.bytes);
+      console.log(`[CGMMgr] localStorage 총 사용량: ${(total / 1024 / 1024).toFixed(2)}MB / 약 5MB 한도`);
+      console.table(rows);
+      const labelImgCount = state.inventory.filter(it => it.labelImg).length;
+      console.log(`[CGMMgr] 라벨 이미지 저장 항목: ${labelImgCount}개 (본 데이터에만 포함, 자동 백업 제외)`);
+      return { totalMB: total / 1024 / 1024, rows };
+    }
+
+    // ── 백업 저장 폴더 (File System Access API) ─────────────────────────
+    const BACKUP_DIR_DB = 'cgmmgr_fs';
+    const BACKUP_DIR_STORE = 'handles';
+    const BACKUP_DIR_KEY = 'backupDir';
+    let backupDirHandle = null;
+
+    function openHandleDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(BACKUP_DIR_DB, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore(BACKUP_DIR_STORE);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async function idbGet(key) {
+      const db = await openHandleDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(BACKUP_DIR_STORE, 'readonly');
+        const req = tx.objectStore(BACKUP_DIR_STORE).get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async function idbSet(key, value) {
+      const db = await openHandleDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(BACKUP_DIR_STORE, 'readwrite');
+        tx.objectStore(BACKUP_DIR_STORE).put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    async function idbDelete(key) {
+      const db = await openHandleDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(BACKUP_DIR_STORE, 'readwrite');
+        tx.objectStore(BACKUP_DIR_STORE).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    function fsAccessSupported() {
+      return typeof window.showDirectoryPicker === 'function';
+    }
+
+    function updateBackupDirUI() {
+      if (!els.backupDirInfo) return;
+      if (!fsAccessSupported()) {
+        els.backupDirInfo.textContent = '이 브라우저는 폴더 저장을 지원하지 않습니다 (Chrome/Edge 권장). 기본 다운로드 폴더를 사용합니다.';
+        if (els.chooseBackupDir) els.chooseBackupDir.disabled = true;
+        return;
+      }
+      els.backupDirInfo.textContent = backupDirHandle
+        ? `저장 폴더: "${backupDirHandle.name}"`
+        : '기본 다운로드 폴더 사용 중';
+    }
+
+    async function loadBackupDirHandle() {
+      if (!fsAccessSupported()) { updateBackupDirUI(); return; }
+      try {
+        const handle = await idbGet(BACKUP_DIR_KEY);
+        if (handle) backupDirHandle = handle;
+      } catch {}
+      updateBackupDirUI();
+    }
+
+    async function ensureBackupDirPermission() {
+      if (!backupDirHandle) return false;
+      try {
+        const opts = { mode: 'readwrite' };
+        if ((await backupDirHandle.queryPermission(opts)) === 'granted') return true;
+        return (await backupDirHandle.requestPermission(opts)) === 'granted';
+      } catch { return false; }
     }
 
     function uid(prefix = 'id') {
@@ -3343,19 +3469,86 @@
       try { localStorage.setItem(notifiedKey, JSON.stringify(notified)); } catch {}
     }
 
-    els.exportData.addEventListener('click', () => {
+    els.exportData.addEventListener('click', async () => {
       const data = {
         version: 1,
         exportedAt: new Date().toISOString(),
         ...state
       };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const json = JSON.stringify(data, null, 2);
+      const filename = `cgmmgr-backup-${todayISO()}.json`;
+
+      if (backupDirHandle && await ensureBackupDirPermission()) {
+        try {
+          const fileHandle = await backupDirHandle.getFileHandle(filename, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(json);
+          await writable.close();
+          showToast(`"${backupDirHandle.name}" 폴더에 저장했습니다.`);
+          return;
+        } catch (err) {
+          showToast('선택한 폴더에 저장하지 못해 기본 다운로드로 저장합니다.', 'err');
+        }
+      }
+
+      const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `cgmmgr-backup-${todayISO()}.json`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
+    });
+
+    els.chooseBackupDir?.addEventListener('click', async () => {
+      if (!fsAccessSupported()) return;
+      try {
+        const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        backupDirHandle = handle;
+        await idbSet(BACKUP_DIR_KEY, handle);
+        updateBackupDirUI();
+        showToast(`백업 저장 폴더를 "${handle.name}"(으)로 설정했습니다.`);
+      } catch (err) {
+        if (err?.name !== 'AbortError') showToast('폴더 선택에 실패했습니다.', 'err');
+      }
+    });
+
+    els.clearBackupDir?.addEventListener('click', async () => {
+      backupDirHandle = null;
+      await idbDelete(BACKUP_DIR_KEY);
+      updateBackupDirUI();
+      showToast('기본 다운로드 폴더로 되돌렸습니다.');
+    });
+
+    els.checkStorageUsage?.addEventListener('click', () => {
+      const { totalMB } = checkStorageUsage();
+      els.storageUsageInfo.textContent = `총 ${totalMB.toFixed(2)}MB 사용 중 (약 5MB 한도) — 상세 내역은 브라우저 콘솔(F12)에서 확인하세요.`;
+      showToast('콘솔(F12)에 상세 용량 내역을 출력했습니다.');
+    });
+
+    els.cleanupOldItems?.addEventListener('click', () => {
+      const days = Number(els.cleanupDays.value) || 180;
+      const cutoff = addDays(todayISO(), -days);
+      const targets = state.inventory.filter(it => {
+        if (!it.archived) return false;
+        const c = calc(it);
+        const refDate = c.effective || it.expiry || it.openedAt || it.createdAt?.slice(0, 10);
+        return refDate && refDate < cutoff;
+      });
+      if (!targets.length) {
+        showToast(`정리할 항목이 없습니다. (${days}일 이상 지난 폐기 항목 기준)`, 'info');
+        return;
+      }
+      const preview = targets.slice(0, 5).map(it => `${sensorTypeById(it.typeId)?.name || it.typeId} (${it.serial || it.lot || '-'})`).join(', ');
+      const more = targets.length > 5 ? ` 외 ${targets.length - 5}건` : '';
+      if (!confirm(`${days}일 이상 지난 폐기 항목 ${targets.length}건을 삭제할까요?\n${preview}${more}\n\n삭제 전 자동 백업을 남깁니다.`)) return;
+      forceAutoBackup();
+      const targetIds = new Set(targets.map(it => it.id));
+      state.inventory = state.inventory.filter(it => !targetIds.has(it.id));
+      state.plans = state.plans.filter(p => !targetIds.has(p.invId));
+      saveState();
+      rerender();
+      showToast(`${targets.length}건을 정리했습니다.`);
     });
 
     document.getElementById('resetData').addEventListener('click', () => {
@@ -3448,6 +3641,8 @@
     updateNotifyToggleUI();
     checkAndNotify();
     setInterval(checkAndNotify, 3600000);
+
+    loadBackupDirHandle();
   </script>
 </body>
 </html>
