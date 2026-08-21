@@ -57,15 +57,16 @@
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
     .section { padding: 14px; }
     .grid { display: grid; gap: 12px; }
+    .grid.cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
     .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     @media (max-width: 960px) {
-      .grid.cols-4, .grid.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid.cols-5, .grid.cols-4, .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (max-width: 640px) {
       .topbar { align-items: flex-start; flex-direction: column; }
-      .grid.cols-4, .grid.cols-3, .grid.cols-2 { grid-template-columns: 1fr; }
+      .grid.cols-5, .grid.cols-4, .grid.cols-3, .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .nav { grid-template-columns: repeat(3, 1fr); }
       .main { width: calc(100% - 16px); margin-top: 8px; }
     }
@@ -304,7 +305,7 @@
 
     <main class="main">
       <section id="view-dashboard" class="grid gap-12">
-        <div class="grid cols-4" id="statsRow"></div>
+        <div class="grid cols-5" id="statsRow"></div>
         <div class="split">
           <div class="panel section">
             <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
@@ -2202,6 +2203,7 @@
       const stats = [
         { label: '전체 재고', value: active.length, hint: '폐기 제외 기준', color: 'var(--primary)', ratio: 100 },
         { label: '미개봉', value: ready, hint: '바로 사용할 수 있는 재고', color: '#0ea5e9', ratio: active.length ? (ready / active.length) * 100 : 0 },
+        { label: '사용중', value: inUse, hint: '현재 부착 중', color: '#22c55e', ratio: active.length ? (inUse / active.length) * 100 : 0 },
         { label: '유효기간 임박', value: shelfWarning, hint: '보관 유효기간 기준', color: 'var(--orange)', ratio: active.length ? (shelfWarning / active.length) * 100 : 0 },
         { label: '만료', value: expired, hint: '즉시 폐기/교체 확인', color: 'var(--red)', ratio: active.length ? (expired / active.length) * 100 : 0 }
       ];
