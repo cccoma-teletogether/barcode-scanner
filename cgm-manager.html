@@ -455,7 +455,7 @@
                 <strong>자동 계획 제안</strong>
                 <span class="mini" id="planAutoSummary"></span>
               </div>
-              <div class="mini" style="margin-bottom:8px; color:var(--muted);">유효기간이 임박한 순서대로, 같은 종류는 겹치지 않게 이어 붙여 제안합니다. ⚠ 표시는 이 순서대로면 유효기간이 지난 뒤 시작하게 되어 사용할 수 없는 항목입니다.</div>
+              <div class="mini" style="margin-bottom:8px; color:var(--muted);">센서는 한 번에 하나만 착용한다는 전제로, 유효기간이 임박한 순서대로 종류와 무관하게 한 줄로 이어 붙여 제안합니다. 동시 착용이 필요한 예외 상황은 제안 적용 후 개별적으로 추가해주세요. ⚠ 표시는 이 순서대로면 유효기간이 지난 뒤 시작하게 되어 사용할 수 없는 항목입니다.</div>
               <div id="planAutoList" class="list" style="margin-bottom:10px;"></div>
               <div class="form-actions">
                 <button class="btn" type="button" id="planAutoCloseBtn">닫기</button>
@@ -2697,51 +2697,40 @@
     }
 
     // ── 자동 계획 제안 ────────────────────────────────────────────────────
-    // 미개봉 재고 전체를 유효기간 임박 순으로, 같은 종류끼리는 겹치지 않게 이어 붙여 시작일을 제안한다.
+    // 센서는 한 번에 하나만 부착한다는 전제로, 미개봉 재고 전체를 유효기간 임박 순으로
+    // 종류와 무관하게 하나의 줄로 이어 붙여 시작일을 제안한다 (suggestPlanStartDate와 동일한 규칙).
     function buildAutoPlanProposals() {
       const plannedIds = new Set(state.plans.map(p => p.invId));
       const candidates = state.inventory
         .filter(it => !it.openedAt && !it.archived && !plannedIds.has(it.id))
         .map(it => ({ ...it, _calc: calc(it) }))
-        .filter(it => it._calc.status === 'ready' || it._calc.status === 'shelf_warning');
-
-      const byType = {};
-      candidates.forEach(it => {
-        (byType[it.typeId] = byType[it.typeId] || []).push(it);
-      });
-      Object.values(byType).forEach(list => list.sort((a, b) => (a.expiry || '9999-12-31').localeCompare(b.expiry || '9999-12-31')));
+        .filter(it => it._calc.status === 'ready' || it._calc.status === 'shelf_warning')
+        .sort((a, b) => (a.expiry || '9999-12-31').localeCompare(b.expiry || '9999-12-31'));
 
       const today = todayISO();
+      let cursor = suggestPlanStartDate();
       const proposals = [];
-      Object.entries(byType).forEach(([typeId, list]) => {
-        const type = sensorTypeById(typeId);
+      candidates.forEach(item => {
+        const type = sensorTypeById(item.typeId);
         if (!type) return;
-        const existing = allActivePlans().filter(p => p.typeId === typeId);
-        let chainEnd = existing.reduce((best, p) => {
-          const e = planEndDate(p);
-          return !best || e > best ? e : best;
-        }, null);
-        let cursor = chainEnd && chainEnd > today ? chainEnd : today;
-        list.forEach(item => {
-          const startDate = cursor;
-          const endDate = addDays(startDate, type.wearDays);
-          const grace = expiryGraceApplies(typeId, startDate, item.expiry);
-          const overExpiry = !!item.expiry && startDate > item.expiry && !grace;
-          proposals.push({
-            invId: item.id,
-            typeId,
-            typeName: type.name,
-            serial: item.serial,
-            lot: item.lot,
-            expiry: item.expiry,
-            startDate,
-            endDate,
-            warning: overExpiry
-          });
-          cursor = endDate;
+        const startDate = cursor >= today ? cursor : today;
+        const endDate = addDays(startDate, type.wearDays);
+        const grace = expiryGraceApplies(item.typeId, startDate, item.expiry);
+        const overExpiry = !!item.expiry && startDate > item.expiry && !grace;
+        proposals.push({
+          invId: item.id,
+          typeId: item.typeId,
+          typeName: type.name,
+          serial: item.serial,
+          lot: item.lot,
+          expiry: item.expiry,
+          startDate,
+          endDate,
+          warning: overExpiry
         });
+        cursor = endDate;
       });
-      return proposals.sort((a, b) => a.startDate.localeCompare(b.startDate));
+      return proposals;
     }
 
     function renderAutoPlanList() {
