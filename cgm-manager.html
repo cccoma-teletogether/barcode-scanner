@@ -341,7 +341,7 @@
             <option value="archived">폐기</option>
           </select>
           <select id="sortBy">
-            <option value="effectiveAsc">실효 종료일 오름차순</option>
+            <option value="effectiveAsc">상태순 (폐기·만료·사용중·임박·미개봉)</option>
             <option value="openedAsc">개봉일 오름차순</option>
             <option value="createdDesc">등록일 최신순</option>
           </select>
@@ -2314,25 +2314,31 @@
 
       const now = new Date();
       const thisMonthKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+      // 보유 중인 미개봉 재고의 가장 늦은 유효기간 달까지 표시 (최소 6개월 보장)
+      let maxExpiryKey = thisMonthKey;
+      unopened.forEach(it => {
+        const key = (it.expiry || '').slice(0, 7);
+        if (key > maxExpiryKey) maxExpiryKey = key;
+      });
+      const [maxY, maxM] = maxExpiryKey.split('-').map(Number);
+      const monthSpan = Math.max(6, (maxY - now.getFullYear()) * 12 + (maxM - (now.getMonth() + 1)) + 1);
+
       const months = [];
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < monthSpan; i++) {
         const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
         months.push({
           key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`,
-          label: i === 0 ? '이번달' : `${d.getMonth() + 1}월`,
+          label: i === 0 ? '이번달' : (d.getMonth() === 0 ? `${d.getFullYear()}.1월` : `${d.getMonth() + 1}월`),
           count: 0, types: {}
         });
       }
       const monthMap = Object.fromEntries(months.map(m => [m.key, m]));
       let expired = 0; // 이미 만료
-      let later = 0;   // 6개월 이후 만료
       unopened.forEach(it => {
         const key = (it.expiry || '').slice(0, 7);
         if (key < thisMonthKey) { expired++; return; }
         const m = monthMap[key];
-        if (!m) { later++; return; }
-        m.count++;
-        m.types[it.typeId] = (m.types[it.typeId] || 0) + 1;
+        if (m) { m.count++; m.types[it.typeId] = (m.types[it.typeId] || 0) + 1; }
       });
       const maxCount = Math.max(1, ...months.map(m => m.count));
 
@@ -2340,21 +2346,23 @@
       const barColor = (count) => count > 3 ? 'var(--orange)' : 'var(--primary)';
       const typeTip = (m) => Object.entries(m.types)
         .map(([tid, n]) => `${sensorTypeById(tid)?.name || tid} ${n}개`).join(', ');
+      const colWidth = 40;
 
       host.innerHTML = `
-        <div class="mini" style="margin-bottom:6px;">월별 유효기간 도래 센서 수 (미개봉 기준, 향후 6개월)</div>
-        <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:6px; align-items:end; height:72px; margin-bottom:4px;">
-          ${months.map(m => `
-            <div style="display:flex; flex-direction:column; align-items:center; gap:2px; height:100%; justify-content:flex-end;" title="${escapeAttr(typeTip(m))}">
-              <span class="mini" style="font-size:10px;">${m.count || ''}</span>
-              <div style="width:100%; max-width:36px; background:${barColor(m.count)}; opacity:${m.count ? 1 : 0.15}; border-radius:3px 3px 0 0; height:${Math.max(4, (m.count / maxCount) * 48)}px;"></div>
-            </div>`).join('')}
-        </div>
-        <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:10px;">
-          ${months.map(m => `<div class="mini" style="text-align:center; font-size:10px;">${m.label}</div>`).join('')}
+        <div class="mini" style="margin-bottom:6px;">월별 유효기간 도래 센서 수 (미개봉 기준, 보유 최대 유효기간까지 ${months.length}개월)</div>
+        <div style="overflow-x:auto;">
+          <div style="display:grid; grid-auto-flow:column; grid-auto-columns:${colWidth}px; gap:6px; align-items:end; height:72px; margin-bottom:4px; width:max-content;">
+            ${months.map(m => `
+              <div style="display:flex; flex-direction:column; align-items:center; gap:2px; height:100%; justify-content:flex-end;" title="${escapeAttr(typeTip(m))}">
+                <span class="mini" style="font-size:10px;">${m.count || ''}</span>
+                <div style="width:100%; max-width:36px; background:${barColor(m.count)}; opacity:${m.count ? 1 : 0.15}; border-radius:3px 3px 0 0; height:${Math.max(4, (m.count / maxCount) * 48)}px;"></div>
+              </div>`).join('')}
+          </div>
+          <div style="display:grid; grid-auto-flow:column; grid-auto-columns:${colWidth}px; gap:6px; margin-bottom:10px; width:max-content;">
+            ${months.map(m => `<div class="mini" style="text-align:center; font-size:10px;">${m.label}</div>`).join('')}
+          </div>
         </div>
         <div class="mini" style="color:var(--muted); margin-bottom:6px;">월 3개 초과(주황)는 한 달 소진 가능량(2~3개)을 넘어 미리 분산 사용이 필요합니다.</div>
-        ${later ? `<div class="mini" style="color:var(--muted);">6개월 이후 만료 ${later}개</div>` : ''}
         ${expired ? `<div class="mini" style="color:var(--red);">⚠ 이미 유효기간이 지난 미개봉 센서 ${expired}개</div>` : ''}
       `;
     }
@@ -2405,6 +2413,9 @@
       `;
     }
 
+    // 폐기 → 만료 → 사용중 → 유효기간 임박 → 미개봉 순
+    const STATUS_SORT_RANK = { archived: 0, expired: 1, in_use: 2, shelf_warning: 3, ready: 4 };
+
     function compareItems(a, b, sortBy) {
       const ca = a.calc || calc(a);
       const cb = b.calc || calc(b);
@@ -2417,11 +2428,17 @@
       if (sortBy === 'createdDesc') {
         return (b.createdAt || '').localeCompare(a.createdAt || '');
       }
-      if ((ca.effective || '9999-12-31') !== (cb.effective || '9999-12-31')) {
+      // 기본(상태순): 폐기/만료/사용중/유효기간 임박/미개봉 그룹으로 묶은 뒤 그룹 내에서 시간순 정렬
+      const ra = STATUS_SORT_RANK[ca.status] ?? 5;
+      const rb = STATUS_SORT_RANK[cb.status] ?? 5;
+      if (ra !== rb) return ra - rb;
+      if (ra <= STATUS_SORT_RANK.in_use) {
+        // 폐기/만료/사용중: 실제 사용 흐름(개봉일)을 기준으로 연속적인 시간순 정렬
+        const ax = a.openedAt || ca.effective || '9999-12-31';
+        const bx = b.openedAt || cb.effective || '9999-12-31';
+        if (ax !== bx) return ax.localeCompare(bx);
+      } else if ((ca.effective || '9999-12-31') !== (cb.effective || '9999-12-31')) {
         return (ca.effective || '9999-12-31').localeCompare(cb.effective || '9999-12-31');
-      }
-      if ((a.openedAt || '') !== (b.openedAt || '')) {
-        return (a.openedAt || '9999-12-31').localeCompare(b.openedAt || '9999-12-31');
       }
       // 센서 종류 → 일련번호 → 등록일 순으로 안정 정렬
       if ((a.typeId || '') !== (b.typeId || '')) {
@@ -2836,6 +2853,15 @@
       els.planFormPanel.style.display = '';
       renderPlanSensorList();
       checkPlanOverlapUI();
+      // 빠른 연속 등록을 위해 "달력에 추가" 버튼으로 포커스 이동
+      els.planConfirmBtn.focus();
+    }
+
+    // 계획 추가 후 다음 미개봉 재고를 이어서 선택 (빠른 연속 등록)
+    function autoAdvancePlanSelection() {
+      const nextBtn = els.planSensorList.querySelector('button[data-plan-inv]');
+      if (nextBtn) openPlanForm(nextBtn.dataset.planInv);
+      else closePlanForm();
     }
 
     function checkPlanOverlapUI() {
@@ -2890,8 +2916,8 @@
       };
       state.plans.push(plan);
       saveState();
-      closePlanForm();
       rerender();
+      autoAdvancePlanSelection();
     });
 
     function openPlanEdit(planId) {
