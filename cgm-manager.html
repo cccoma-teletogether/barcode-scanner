@@ -2523,9 +2523,14 @@
 
     function renderTypeSelects() {
       const opts = state.sensorTypes.map(t => `<option value="${escapeAttr(t.id)}">${escapeHtml(t.name)} · ${t.wearDays}일</option>`).join('');
+      const prevFormType = els.formType.value;
+      const prevFilterType = els.filterType.value;
       els.formType.innerHTML = `<option value="">선택</option>${opts}`;
       els.scanTypeSelect.innerHTML = `<option value="">자동 감지</option>${opts}`;
       els.filterType.innerHTML = `<option value="">센서 종류 전체</option>${opts}`;
+      // 재렌더링으로 옵션이 새로 만들어져도 이전에 선택했던 값(존재한다면) 유지
+      if (prevFormType && state.sensorTypes.some(t => t.id === prevFormType)) els.formType.value = prevFormType;
+      if (prevFilterType && state.sensorTypes.some(t => t.id === prevFilterType)) els.filterType.value = prevFilterType;
       els.scanTypeSelect.value = els.formType.value || '';
     }
 
