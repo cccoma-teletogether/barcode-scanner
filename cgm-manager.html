@@ -493,7 +493,10 @@
             <div class="panel section">
               <div class="stack" style="justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <strong>등록된 계획</strong>
-                <span class="badge" id="planCount">0건</span>
+                <div class="stack" style="align-items:center;">
+                  <span class="badge" id="planCount">0건</span>
+                  <button class="btn small danger" type="button" id="planDeleteAllBtn">전체 삭제</button>
+                </div>
               </div>
               <div class="list" id="planList"></div>
             </div>
@@ -791,6 +794,7 @@
       planEditCancelBtn: document.getElementById('planEditCancelBtn'),
       planEditConfirmBtn: document.getElementById('planEditConfirmBtn'),
       planCount: document.getElementById('planCount'),
+      planDeleteAllBtn: document.getElementById('planDeleteAllBtn'),
       planList: document.getElementById('planList'),
       calPrev: document.getElementById('calPrev'),
       calNext: document.getElementById('calNext'),
@@ -3017,6 +3021,24 @@
     });
 
     els.planStartDate.addEventListener('input', checkPlanOverlapUI);
+
+    els.planDeleteAllBtn.addEventListener('click', () => {
+      if (!state.plans.length) {
+        showToast('등록된 계획이 없습니다.', 'info');
+        return;
+      }
+      if (!confirm(`등록된 계획 ${state.plans.length}건을 모두 삭제할까요?\n(현재 사용중인 센서의 실제 사용 기록은 삭제되지 않습니다.)`)) return;
+      state.plans = [];
+      planSelectedInvId = null;
+      planEditingPlanId = null;
+      planListSelectedId = null;
+      closePlanForm();
+      closePlanEdit();
+      closeAutoPlanPanel();
+      saveState();
+      rerender();
+      showToast('등록된 계획을 모두 삭제했습니다.');
+    });
 
     els.planCancelBtn.addEventListener('click', closePlanForm);
 
