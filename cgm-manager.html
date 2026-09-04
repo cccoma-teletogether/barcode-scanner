@@ -483,10 +483,14 @@
                   <div class="mini">새 시작일</div>
                   <input id="planEditDate" type="date" />
                 </label>
+                <label class="mini" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                  <input id="planEditShiftToggle" type="checkbox" style="width:15px; height:15px;" />
+                  이후 같은 종류 계획도 함께 밀기
+                </label>
                 <div class="mini" id="planEditShiftInfo" style="color:var(--primary);"></div>
                 <div class="form-actions" style="padding-top:4px;">
                   <button class="btn" type="button" id="planEditCancelBtn">취소</button>
-                  <button class="btn primary" type="button" id="planEditConfirmBtn">저장 (이후 계획 함께 밀기)</button>
+                  <button class="btn primary" type="button" id="planEditConfirmBtn">저장</button>
                 </div>
               </div>
             </div>
@@ -793,6 +797,7 @@
       planEditShiftInfo: document.getElementById('planEditShiftInfo'),
       planEditCancelBtn: document.getElementById('planEditCancelBtn'),
       planEditConfirmBtn: document.getElementById('planEditConfirmBtn'),
+      planEditShiftToggle: document.getElementById('planEditShiftToggle'),
       planCount: document.getElementById('planCount'),
       planDeleteAllBtn: document.getElementById('planDeleteAllBtn'),
       planList: document.getElementById('planList'),
@@ -3080,6 +3085,7 @@
       const type = sensorTypeById(plan.typeId);
       els.planEditTitle.textContent = `시작일 수정 — ${type?.name || '-'} (${plan.startDate})`;
       els.planEditDate.value = plan.startDate;
+      els.planEditShiftToggle.checked = false;
       updatePlanEditShiftInfo();
       els.planEditPanel.style.display = '';
       // 추가 폼 닫기
@@ -3093,9 +3099,13 @@
       const newStart = els.planEditDate.value;
       if (!newStart) { els.planEditShiftInfo.textContent = ''; return; }
       const delta = daysBetween(plan.startDate, newStart);
+      if (delta === 0) { els.planEditShiftInfo.textContent = '날짜 변경 없음'; return; }
+      if (!els.planEditShiftToggle.checked) {
+        els.planEditShiftInfo.textContent = '이 계획만 이동합니다 (다른 계획은 그대로 유지).';
+        return;
+      }
       // 같은 종류 이후 계획 수
       const affected = state.plans.filter(p => p.id !== planEditingPlanId && p.typeId === plan.typeId && p.startDate >= plan.startDate).length;
-      if (delta === 0) { els.planEditShiftInfo.textContent = '날짜 변경 없음'; return; }
       const dir = delta > 0 ? `+${delta}일 뒤로` : `${delta}일 앞으로`;
       els.planEditShiftInfo.textContent = `이 계획 포함, 같은 종류 이후 계획 ${affected + 1}건이 ${dir} 밀립니다.`;
     }
@@ -3124,6 +3134,7 @@
     });
 
     els.planEditDate.addEventListener('input', updatePlanEditShiftInfo);
+    els.planEditShiftToggle.addEventListener('change', updatePlanEditShiftInfo);
 
     els.planEditCancelBtn.addEventListener('click', closePlanEdit);
 
@@ -3135,21 +3146,32 @@
       if (!newStart) { alert('날짜를 선택해주세요.'); return; }
       const delta = daysBetween(plan.startDate, newStart);
       if (delta === 0) { closePlanEdit(); return; }
-      // 이 계획 포함, 같은 종류 이후 계획 모두 밀기
-      shiftPlansAfter(plan.typeId, plan.startDate, delta, null);
-      // 이동 후 겹침 검증
-      const movedPlan = state.plans.find(p => p.id === planEditingPlanId);
-      if (movedPlan) {
-        const movedEnd = planEndDate(movedPlan);
-        const overlapAfterShift = planOverlaps(movedPlan.typeId, movedPlan.startDate, movedEnd, movedPlan.id);
-        if (overlapAfterShift.length) {
-          const names = overlapAfterShift.map(p => `${p.startDate}~${planEndDate(p)}`).join(', ');
-          if (!confirm(`이동 후 같은 종류 계획과 2일 이상 겹칩니다.\n겹치는 구간: ${names}\n계속 저장할까요?`)) {
-            // 롤백
-            shiftPlansAfter(plan.typeId, movedPlan.startDate, -delta, null);
-            return;
+
+      if (els.planEditShiftToggle.checked) {
+        // 이 계획 포함, 같은 종류 이후 계획 모두 밀기
+        shiftPlansAfter(plan.typeId, plan.startDate, delta, null);
+        const movedPlan = state.plans.find(p => p.id === planEditingPlanId);
+        if (movedPlan) {
+          const movedEnd = planEndDate(movedPlan);
+          const overlapAfterShift = planOverlaps(movedPlan.typeId, movedPlan.startDate, movedEnd, movedPlan.id);
+          if (overlapAfterShift.length) {
+            const names = overlapAfterShift.map(p => `${p.startDate}~${planEndDate(p)}`).join(', ');
+            if (!confirm(`이동 후 같은 종류 계획과 2일 이상 겹칩니다.\n겹치는 구간: ${names}\n계속 저장할까요?`)) {
+              // 롤백
+              shiftPlansAfter(plan.typeId, movedPlan.startDate, -delta, null);
+              return;
+            }
           }
         }
+      } else {
+        // 이 계획만 이동, 다른 계획은 그대로 유지
+        const newEnd = planEndDate({ ...plan, startDate: newStart });
+        const overlaps = planOverlaps(plan.typeId, newStart, newEnd, plan.id);
+        if (overlaps.length) {
+          const names = overlaps.map(p => `${p.startDate}~${planEndDate(p)}`).join(', ');
+          if (!confirm(`같은 종류 계획과 2일 이상 겹칩니다.\n겹치는 구간: ${names}\n계속 저장할까요?`)) return;
+        }
+        plan.startDate = newStart;
       }
       saveState();
       closePlanEdit();
