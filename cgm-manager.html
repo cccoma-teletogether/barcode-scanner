@@ -2523,7 +2523,7 @@
               <div class="name"><span class="badge" style="background:${typeColor}22; color:${typeColor}; border-color:${typeColor}33; margin-right:6px;">■</span>${escapeHtml(type?.name || '알 수 없음')}</div>
               <div class="meta">${item.serial ? `S/N ${escapeHtml(item.serial)}` : '일련번호 없음'} · ${type ? `${type.wearDays}일 사용` : '사용기간 없음'}</div>
               <div class="meta">유효기간 ${fmtDate(item.expiry) || '-'}</div>
-              ${item.openedAt ? `<div class="meta">사용기간 ${fmtDate(item.openedAt)} ~ ${fmtDate(item.archived ? (item.archivedAt || item.calc.wearEnd) : item.calc.wearEnd)}</div>` : ''}
+              ${item.openedAt ? `<div class="meta">사용기간 ${fmtDate(item.openedAt)} ~ ${fmtDate(item.archived ? (item.archivedAt || item.calc.wearEnd) : item.calc.wearEnd)}${item.calc.earlyEnd ? ' ⚠조기종료' : ''}</div>` : ''}
               <div class="stack" style="margin-top:6px;">${tags}</div>
               ${planBadge ? `<div style="margin-top:4px;">${planBadge}</div>` : ''}
             </div>
