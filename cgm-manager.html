@@ -2990,12 +2990,12 @@
         html += `<div class="cal-day other-month"><span class="cal-day-num">${prev.getDate()}</span></div>`;
       }
 
-      // 개봉 기록이 있는 모든 재고: 진행중은 오늘까지, 폐기는 실제 종료일까지 막대로 표시
+      // 개봉 기록이 있는 모든 재고: 진행중은 사용종료일까지, 폐기는 실제 종료일까지 막대로 표시
       const used = state.inventory
         .filter(it => it.openedAt)
         .map(it => {
           const c = calc(it);
-          const end = it.archived ? (it.archivedAt || c.wearEnd) : (c.wearEnd > today ? today : c.wearEnd);
+          const end = it.archived ? (it.archivedAt || c.wearEnd) : c.wearEnd;
           return { item: it, calc: c, end };
         });
 
@@ -3010,11 +3010,12 @@
           const type = sensorTypeById(u.item.typeId);
           const color = sensorTypeColor(type);
           const isStart = dateStr === u.item.openedAt;
+          const isFuture = !u.item.archived && dateStr > today;
           const label = isStart ? (type?.name || '-') : '';
-          const opacity = isStart ? '1' : '0.7';
+          const opacity = isFuture ? '0.4' : (isStart ? '1' : '0.7');
           const warnClass = u.calc.earlyEnd ? ' expiry-warn' : '';
           const statusText = u.item.archived ? (u.calc.earlyEnd ? ' [조기종료]' : ' [폐기]') : ' [사용중]';
-          const titleAttr = escapeAttr(`${type?.name || '-'}${statusText} ${u.item.openedAt}~${u.end}`);
+          const titleAttr = escapeAttr(`${type?.name || '-'}${statusText} ${u.item.openedAt}~${u.end}${isFuture ? ' (예정)' : ''}`);
           return `<span class="plan-bar${warnClass}" style="background:${color};opacity:${opacity};" title="${titleAttr}">${escapeHtml(label)}</span>`;
         }).join('');
 
