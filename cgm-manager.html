@@ -330,6 +330,21 @@
           </div>
           <div id="usageStats"></div>
         </div>
+        <div class="panel section">
+          <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <strong>실제 사용 이력</strong>
+            <span class="mini" style="color:var(--muted);">개봉일 ~ 실제/예상 종료일 기준</span>
+          </div>
+          <div class="cal-nav">
+            <button class="btn small" id="historyCalPrev">&#8249;</button>
+            <strong id="historyCalTitle"></strong>
+            <div style="display:flex;gap:6px;">
+              <button class="btn small" id="historyCalToday">오늘</button>
+              <button class="btn small" id="historyCalNext">&#8250;</button>
+            </div>
+          </div>
+          <div class="cal-grid" id="historyCalGrid"></div>
+        </div>
       </section>
 
       <section id="view-inventory" class="panel section hidden">
@@ -806,7 +821,12 @@
       calNext: document.getElementById('calNext'),
       calToday: document.getElementById('calToday'),
       calTitle: document.getElementById('calTitle'),
-      calGrid: document.getElementById('calGrid')
+      calGrid: document.getElementById('calGrid'),
+      historyCalPrev: document.getElementById('historyCalPrev'),
+      historyCalNext: document.getElementById('historyCalNext'),
+      historyCalToday: document.getElementById('historyCalToday'),
+      historyCalTitle: document.getElementById('historyCalTitle'),
+      historyCalGrid: document.getElementById('historyCalGrid')
     };
 
     let state = loadState();
@@ -816,6 +836,8 @@
     let changelogEntries = structuredClone(DEFAULT_CHANGELOG_ENTRIES);
     let planCalYear = new Date().getFullYear();
     let planCalMonth = new Date().getMonth(); // 0-indexed
+    let historyCalYear = new Date().getFullYear();
+    let historyCalMonth = new Date().getMonth(); // 0-indexed
     let planSelectedInvId = null; // 현재 선택된 재고 id
     let planEditingPlanId = null; // 수정 중인 계획 id
     let planListSelectedId = null; // 달력 클릭으로 선택된 계획 id
@@ -2234,6 +2256,7 @@
       els.viewButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === name));
       if (name === 'add') focusFormForNew();
       if (name === 'plan') renderPlan();
+      if (name === 'dashboard') renderHistoryCalendar();
     }
 
     function renderToday() {
@@ -2948,6 +2971,68 @@
       els.calGrid.innerHTML = html;
     }
 
+    // 실제 개봉~종료(또는 진행중이면 오늘까지)한 센서를 한 눈에 보여주는 읽기 전용 이력 달력
+    function renderHistoryCalendar() {
+      const today = todayISO();
+      const year = historyCalYear, month = historyCalMonth;
+      els.historyCalTitle.textContent = `${year}년 ${month + 1}월`;
+
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const startDow = firstDay.getDay();
+      const daysInMonth = lastDay.getDate();
+
+      const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
+      let html = DAYS.map(d => `<div class="cal-header">${d}</div>`).join('');
+
+      for (let i = 0; i < startDow; i++) {
+        const prev = new Date(year, month, -startDow + i + 1);
+        html += `<div class="cal-day other-month"><span class="cal-day-num">${prev.getDate()}</span></div>`;
+      }
+
+      // 개봉 기록이 있는 모든 재고: 진행중은 오늘까지, 폐기는 실제 종료일까지 막대로 표시
+      const used = state.inventory
+        .filter(it => it.openedAt)
+        .map(it => {
+          const c = calc(it);
+          const end = it.archived ? (it.archivedAt || c.wearEnd) : (c.wearEnd > today ? today : c.wearEnd);
+          return { item: it, calc: c, end };
+        });
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
+        const isToday = dateStr === today;
+
+        const bars = used.filter(u => dateStr >= u.item.openedAt && dateStr <= u.end)
+          .sort((a, b) => a.item.openedAt.localeCompare(b.item.openedAt));
+
+        const barsHtml = bars.map(u => {
+          const type = sensorTypeById(u.item.typeId);
+          const color = sensorTypeColor(type);
+          const isStart = dateStr === u.item.openedAt;
+          const label = isStart ? (type?.name || '-') : '';
+          const opacity = isStart ? '1' : '0.7';
+          const warnClass = u.calc.earlyEnd ? ' expiry-warn' : '';
+          const statusText = u.item.archived ? (u.calc.earlyEnd ? ' [조기종료]' : ' [폐기]') : ' [사용중]';
+          const titleAttr = escapeAttr(`${type?.name || '-'}${statusText} ${u.item.openedAt}~${u.end}`);
+          return `<span class="plan-bar${warnClass}" style="background:${color};opacity:${opacity};" title="${titleAttr}">${escapeHtml(label)}</span>`;
+        }).join('');
+
+        html += `<div class="cal-day${isToday ? ' today-cell' : ''}" data-date="${dateStr}">
+          <span class="cal-day-num">${d}</span>
+          ${barsHtml}
+        </div>`;
+      }
+
+      const total = startDow + daysInMonth;
+      const remain = total % 7 === 0 ? 0 : 7 - (total % 7);
+      for (let i = 1; i <= remain; i++) {
+        html += `<div class="cal-day other-month"><span class="cal-day-num">${i}</span></div>`;
+      }
+
+      els.historyCalGrid.innerHTML = html;
+    }
+
     function renderPlan() {
       renderPlanSensorList();
       renderPlanList();
@@ -3216,6 +3301,25 @@
       planCalYear = now.getFullYear();
       planCalMonth = now.getMonth();
       renderCalendar();
+    });
+
+    els.historyCalPrev.addEventListener('click', () => {
+      historyCalMonth--;
+      if (historyCalMonth < 0) { historyCalMonth = 11; historyCalYear--; }
+      renderHistoryCalendar();
+    });
+
+    els.historyCalNext.addEventListener('click', () => {
+      historyCalMonth++;
+      if (historyCalMonth > 11) { historyCalMonth = 0; historyCalYear++; }
+      renderHistoryCalendar();
+    });
+
+    els.historyCalToday.addEventListener('click', () => {
+      const now = new Date();
+      historyCalYear = now.getFullYear();
+      historyCalMonth = now.getMonth();
+      renderHistoryCalendar();
     });
 
     function selectPlanInList(planId) {
@@ -3504,6 +3608,7 @@
       _calcCache.clear();
       renderToday();
       renderStats();
+      renderHistoryCalendar();
       renderInventory();
       renderChangelog();
       renderSettings();
