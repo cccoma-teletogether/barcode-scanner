@@ -2428,7 +2428,6 @@
       else if (calcInfo.shelfWarning) tags.push(`<span class="status shelf_warning">유효기간 임박</span>`);
       if (calcInfo.expiryRisk) tags.push(`<span class="status shelf_warning">유효기간 초과위험</span>`);
       if (calcInfo.wearExpired) tags.push(`<span class="status expired">사용기간 만료</span>`);
-      if (calcInfo.earlyEnd) tags.push(`<span class="status shelf_warning">조기종료</span>`);
       if (!tags.length) tags.push(`<span class="status ${calcInfo.status}">${statusLabel(calcInfo.status)}</span>`);
       return tags.join(' ');
     }
@@ -2524,7 +2523,6 @@
               <div class="meta">${item.serial ? `S/N ${escapeHtml(item.serial)}` : '일련번호 없음'} · ${type ? `${type.wearDays}일 사용` : '사용기간 없음'}</div>
               <div class="meta">유효기간 ${fmtDate(item.expiry) || '-'}</div>
               ${item.openedAt ? `<div class="meta">사용기간 ${fmtDate(item.openedAt)} ~ ${fmtDate(item.archived ? (item.archivedAt || item.calc.wearEnd) : item.calc.wearEnd)}</div>` : ''}
-              ${item.calc.earlyEnd ? `<div style="color:var(--orange); font-size:11px; font-weight:700;">⚠ 조기종료</div>` : ''}
               <div class="stack" style="margin-top:6px;">${tags}</div>
               ${planBadge ? `<div style="margin-top:4px;">${planBadge}</div>` : ''}
             </div>
@@ -2533,10 +2531,13 @@
               <div class="meta">보관 ${item.calc.shelfRemaining != null ? `D-${item.calc.shelfRemaining}` : '-'}</div>
             </div>
             <div>
-              <div>${item.openedAt ? `${fmtDate(item.openedAt)} ~ ${fmtDate(item.archived ? (item.archivedAt || item.calc.wearEnd) : item.calc.wearEnd)}${item.calc.earlyEnd ? ' ⚠조기종료' : ''}` : fmtDate(item.calc.wearEnd)}</div>
+              <div>${item.openedAt ? `${fmtDate(item.openedAt)} ~ ${fmtDate(item.archived ? (item.archivedAt || item.calc.wearEnd) : item.calc.wearEnd)}` : fmtDate(item.calc.wearEnd)}</div>
               <div class="meta">사용 ${item.openedAt && item.calc.wearRemaining != null ? (item.calc.wearRemaining >= 0 ? `D-${item.calc.wearRemaining}` : `D+${Math.abs(item.calc.wearRemaining)}`) : '-'}</div>
             </div>
-            <div><span class="status ${item.calc.status}">${statusLabel(item.calc.status)}</span></div>
+            <div class="stack" style="justify-content:flex-end;">
+              ${item.calc.earlyEnd ? `<span class="status shelf_warning">조기종료</span>` : ''}
+              <span class="status ${item.calc.status}">${statusLabel(item.calc.status)}</span>
+            </div>
             <div class="stack">
               <button class="btn small" data-action="detail" data-id="${item.id}">상세</button>
               <button class="btn small" data-action="edit" data-id="${item.id}">수정</button>
