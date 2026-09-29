@@ -2422,13 +2422,13 @@
       return `<div class="item" style="color:var(--muted);">${escapeHtml(text)}</div>`;
     }
 
+    // 기본 상태(폐기/미개봉/사용중 등)는 상태 컬럼에서 표시하므로, 여기서는 경고성 태그만 반환한다
     function renderStatusTags(calcInfo) {
       const tags = [];
       if (calcInfo.shelfExpired) tags.push(`<span class="status expired">유효기간 만료</span>`);
       else if (calcInfo.shelfWarning) tags.push(`<span class="status shelf_warning">유효기간 임박</span>`);
       if (calcInfo.expiryRisk) tags.push(`<span class="status shelf_warning">유효기간 초과위험</span>`);
       if (calcInfo.wearExpired) tags.push(`<span class="status expired">사용기간 만료</span>`);
-      if (!tags.length) tags.push(`<span class="status ${calcInfo.status}">${statusLabel(calcInfo.status)}</span>`);
       return tags.join(' ');
     }
 
@@ -2523,7 +2523,7 @@
               <div class="meta">${item.serial ? `S/N ${escapeHtml(item.serial)}` : '일련번호 없음'} · ${type ? `${type.wearDays}일 사용` : '사용기간 없음'}</div>
               <div class="meta">유효기간 ${fmtDate(item.expiry) || '-'}</div>
               ${item.openedAt ? `<div class="meta">사용기간 ${fmtDate(item.openedAt)} ~ ${fmtDate(item.archived ? (item.archivedAt || item.calc.wearEnd) : item.calc.wearEnd)}</div>` : ''}
-              <div class="stack" style="margin-top:6px;">${tags}</div>
+              ${tags ? `<div class="stack" style="margin-top:6px;">${tags}</div>` : ''}
               ${planBadge ? `<div style="margin-top:4px;">${planBadge}</div>` : ''}
             </div>
             <div>
