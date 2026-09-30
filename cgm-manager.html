@@ -2416,27 +2416,53 @@
       });
       const maxCount = Math.max(1, ...months.map(m => m.count));
 
+      // 이번 달 시작 시점의 보유량에서, 각 월 도래분만큼 소진된다고 가정한 누적 보유량 추이
+      let running = unopened.length;
+      months.forEach(m => { m.remaining = running; running -= m.count; });
+      const maxRemaining = Math.max(1, ...months.map(m => m.remaining));
+
       // 월 사용량 대비 참고치: 한 달 물리적 소진 가능량은 보통 2~3개
       const barColor = (count) => count > 3 ? 'var(--orange)' : 'var(--primary)';
       const typeTip = (m) => Object.entries(m.types)
         .map(([tid, n]) => `${sensorTypeById(tid)?.name || tid} ${n}개`).join(', ');
       const colWidth = 40;
+      const containerHeight = 72; // 막대 컨테이너 전체 높이
+      const barMaxHeight = 48; // 막대가 실제 차지하는 최대 높이 (바닥 기준)
+      const lineTopMargin = 6; // 선이 막대 영역 맨 위(count=maxCount 지점)보다 살짝 여유를 두도록
+
+      // 각 월 컬럼 중앙 x좌표, remaining 값을 막대와 같은 바닥 기준 y좌표로 변환
+      const points = months.map((m, i) => {
+        const x = i * (colWidth + 6) + colWidth / 2;
+        const usable = barMaxHeight - lineTopMargin;
+        const y = containerHeight - lineTopMargin - (m.remaining / maxRemaining) * usable;
+        return { x, y, m };
+      });
+      const polylinePoints = points.map(p => `${p.x},${p.y}`).join(' ');
+      const svgWidth = months.length * (colWidth + 6) - 6;
+      const lineSvg = `
+        <svg width="${svgWidth}" height="${containerHeight}" style="position:absolute; left:0; top:0; overflow:visible; pointer-events:none;">
+          <polyline points="${polylinePoints}" fill="none" stroke="var(--green)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+          ${points.map(p => `<circle cx="${p.x}" cy="${p.y}" r="2.5" fill="var(--green)" />`).join('')}
+        </svg>`;
 
       host.innerHTML = `
-        <div class="mini" style="margin-bottom:6px;">월별 유효기간 도래 센서 수 (미개봉 기준, 보유 최대 유효기간까지 ${months.length}개월)</div>
+        <div class="mini" style="margin-bottom:6px;">월별 유효기간 도래 센서 수 (막대, 미개봉 기준) · <span style="color:var(--green); font-weight:700;">━</span> 누적 보유 예상 수량 (선, 보유 최대 유효기간까지 ${months.length}개월)</div>
         <div style="overflow-x:auto;">
-          <div style="display:grid; grid-auto-flow:column; grid-auto-columns:${colWidth}px; gap:6px; align-items:end; height:72px; margin-bottom:4px; width:max-content;">
-            ${months.map(m => `
-              <div style="display:flex; flex-direction:column; align-items:center; gap:2px; height:100%; justify-content:flex-end;" title="${escapeAttr(typeTip(m))}">
-                <span class="mini" style="font-size:10px;">${m.count || ''}</span>
-                <div style="width:100%; max-width:36px; background:${barColor(m.count)}; opacity:${m.count ? 1 : 0.15}; border-radius:3px 3px 0 0; height:${Math.max(4, (m.count / maxCount) * 48)}px;"></div>
-              </div>`).join('')}
+          <div style="position:relative; height:72px; margin-bottom:4px; width:max-content;">
+            <div style="display:grid; grid-auto-flow:column; grid-auto-columns:${colWidth}px; gap:6px; align-items:end; height:100%;">
+              ${months.map(m => `
+                <div style="display:flex; flex-direction:column; align-items:center; gap:2px; height:100%; justify-content:flex-end;" title="${escapeAttr(`보유 예상 ${m.remaining}개${typeTip(m) ? ' · ' + typeTip(m) : ''}`)}">
+                  <span class="mini" style="font-size:10px;">${m.count || ''}</span>
+                  <div style="width:100%; max-width:36px; background:${barColor(m.count)}; opacity:${m.count ? 1 : 0.15}; border-radius:3px 3px 0 0; height:${Math.max(4, (m.count / maxCount) * 48)}px;"></div>
+                </div>`).join('')}
+            </div>
+            ${lineSvg}
           </div>
           <div style="display:grid; grid-auto-flow:column; grid-auto-columns:${colWidth}px; gap:6px; margin-bottom:10px; width:max-content;">
             ${months.map(m => `<div class="mini" style="text-align:center; font-size:10px;">${m.label}</div>`).join('')}
           </div>
         </div>
-        <div class="mini" style="color:var(--muted); margin-bottom:6px;">월 3개 초과(주황)는 한 달 소진 가능량(2~3개)을 넘어 미리 분산 사용이 필요합니다.</div>
+        <div class="mini" style="color:var(--muted); margin-bottom:6px;">월 3개 초과(주황)는 한 달 소진 가능량(2~3개)을 넘어 미리 분산 사용이 필요합니다. 초록 선은 그 달이 시작될 때 남아있을 것으로 예상되는 미개봉 보유량입니다.</div>
         ${expired ? `<div class="mini" style="color:var(--red);">⚠ 이미 유효기간이 지난 미개봉 센서 ${expired}개</div>` : ''}
       `;
     }
