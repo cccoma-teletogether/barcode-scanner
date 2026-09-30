@@ -522,18 +522,18 @@
               </div>
             </div>
             <div class="panel section">
-              <div class="stack" style="justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <div class="stack" style="justify-content:space-between; align-items:center; margin-bottom:6px;">
                 <strong>등록된 계획</strong>
-                <div class="stack" style="align-items:center;">
-                  <select id="planStatusFilter" style="max-width:130px;">
-                    <option value="">상태 전체</option>
-                    <option value="hide_archived">폐기 제외</option>
-                    <option value="planned">계획(예정)만</option>
-                    <option value="in_use">사용중만</option>
-                  </select>
-                  <span class="badge" id="planCount">0건</span>
-                  <button class="btn small danger" type="button" id="planDeleteAllBtn">전체 삭제</button>
-                </div>
+                <span class="badge" id="planCount">0건</span>
+              </div>
+              <div class="stack" style="justify-content:space-between; align-items:center; margin-bottom:10px; gap:6px;">
+                <select id="planStatusFilter" style="max-width:120px; font-size:12px;">
+                  <option value="">상태 전체</option>
+                  <option value="hide_archived">폐기 제외</option>
+                  <option value="planned">계획(예정)만</option>
+                  <option value="in_use">사용중만</option>
+                </select>
+                <button class="btn small danger" type="button" id="planDeleteAllBtn">전체 삭제</button>
               </div>
               <div class="list" id="planList"></div>
             </div>
