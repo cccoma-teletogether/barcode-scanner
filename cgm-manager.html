@@ -2513,32 +2513,31 @@
         return;
       }
 
+      // 재고가 처음 바닥나는 시점(부족 시작월)을 찾는다 (구매 없이 그대로 소비만 계속된다고 가정)
       let carry = 0;
-      const purchases = [];
+      let runOutMonth = null;
       months.forEach(mo => {
+        if (runOutMonth) return;
         carry += monthlyRate;
         const consumeThisMonth = Math.floor(carry);
         carry -= consumeThisMonth;
         stock -= consumeThisMonth;
-        if (stock < 0) {
-          purchases.push({ month: mo.label, need: -stock });
-          stock = 0;
-        }
+        if (stock < 0) runOutMonth = mo.label;
       });
 
-      if (!purchases.length) {
+      if (!runOutMonth) {
         host.innerHTML = `<div class="mini" style="color:var(--muted);">향후 ${MONTH_SPAN}개월 동안은 현재 보유량(${unopened.length}개)으로 충분할 것으로 예상됩니다.</div>`;
         return;
       }
 
+      // 향후 12개월 총 소비량 대비 부족분 = 지금 구매해두면 12개월을 버틸 수 있는 수량
+      const totalNeed = Math.max(0, Math.ceil(monthlyRate * MONTH_SPAN) - unopened.length);
+
       host.innerHTML = `
-        <div class="mini" style="margin-bottom:10px; color:var(--muted);">현재 미개봉 보유량 ${unopened.length}개를, 보유 중인 종류들의 평균 사용기간 기준 월 소비속도(약 ${monthlyRate.toFixed(1)}개/월)로 소진 시뮬레이션한 결과입니다. 종류는 구분하지 않으며, 명절 등 행사 시 저렴한 센서로 구입하는 방식을 감안해 수량만 안내합니다.</div>
-        <div class="grid" style="gap:4px;">
-          ${purchases.map(p => `
-            <div class="mini" style="display:flex; justify-content:space-between; padding:6px 10px; background:#f8fafc; border-radius:6px;">
-              <span><strong>${p.month}</strong> 이전 구입 필요</span>
-              <span>${p.need}개</span>
-            </div>`).join('')}
+        <div class="mini" style="margin-bottom:10px; color:var(--muted);">현재 미개봉 보유량 ${unopened.length}개, 보유 중인 종류들의 평균 사용기간 기준 월 소비속도 약 ${monthlyRate.toFixed(1)}개로 계산했습니다. 종류는 구분하지 않으며, 명절 등 행사 시 저렴한 센서로 구입하는 방식을 감안해 총수량만 안내합니다.</div>
+        <div class="mini" style="display:flex; justify-content:space-between; padding:10px 12px; background:#f8fafc; border-radius:6px;">
+          <span><strong>${runOutMonth}</strong>부터 재고 부족 예상</span>
+          <span><strong>${totalNeed}개</strong> 구입 시 향후 ${MONTH_SPAN}개월분 확보</span>
         </div>
       `;
     }
