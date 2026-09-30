@@ -2416,9 +2416,17 @@
       });
       const maxCount = Math.max(1, ...months.map(m => m.count));
 
-      // 이번 달 시작 시점의 보유량에서, 각 월 도래분만큼 소진된다고 가정한 누적 보유량 추이
+      // 이번 달 시작 시점의 보유량에서, 그 달에 사용 시작하는 계획 건수만큼 소진된다고 가정한 누적 보유량 추이
+      const unopenedIds = new Set(unopened.map(it => it.id));
+      const planStartCounts = {};
+      state.plans.forEach(p => {
+        if (!unopenedIds.has(p.invId)) return; // 이미 개봉/폐기된 재고의 계획은 제외
+        const key = (p.startDate || '').slice(0, 7);
+        if (key < thisMonthKey) return;
+        planStartCounts[key] = (planStartCounts[key] || 0) + 1;
+      });
       let running = unopened.length;
-      months.forEach(m => { m.remaining = running; running -= m.count; });
+      months.forEach(m => { m.remaining = running; running -= (planStartCounts[m.key] || 0); });
       const maxRemaining = Math.max(1, ...months.map(m => m.remaining));
 
       // 월 사용량 대비 참고치: 한 달 물리적 소진 가능량은 보통 2~3개
@@ -2462,7 +2470,7 @@
             ${months.map(m => `<div class="mini" style="text-align:center; font-size:10px;">${m.label}</div>`).join('')}
           </div>
         </div>
-        <div class="mini" style="color:var(--muted); margin-bottom:6px;">월 3개 초과(주황)는 한 달 소진 가능량(2~3개)을 넘어 미리 분산 사용이 필요합니다. 초록 선은 그 달이 시작될 때 남아있을 것으로 예상되는 미개봉 보유량입니다.</div>
+        <div class="mini" style="color:var(--muted); margin-bottom:6px;">월 3개 초과(주황)는 한 달 소진 가능량(2~3개)을 넘어 미리 분산 사용이 필요합니다. 초록 선은 등록된 사용계획의 시작일 기준으로, 그 달이 시작될 때 남아있을 것으로 예상되는 미개봉 보유량입니다(계획이 없는 재고는 소진되지 않는 것으로 계산).</div>
         ${expired ? `<div class="mini" style="color:var(--red);">⚠ 이미 유효기간이 지난 미개봉 센서 ${expired}개</div>` : ''}
       `;
     }
