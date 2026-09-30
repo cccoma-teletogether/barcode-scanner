@@ -2603,14 +2603,34 @@
       const unopened = state.inventory.filter(it => !it.openedAt && !it.archived);
       let stock = unopened.length;
 
-      // 센서는 한 번에 하나만 착용하므로, 보유 수량 가중 평균 사용기간으로 단일 소비속도를 계산한다
-      // (종류별 30/wearDays를 단순 합산하면 종류 수만큼 동시에 착용하는 것처럼 부풀려진다)
-      const totalWearDays = unopened.reduce((sum, it) => {
-        const t = sensorTypeById(it.typeId);
-        return sum + (t ? t.wearDays : 0);
-      }, 0);
-      const avgWearDays = unopened.length ? totalWearDays / unopened.length : 0;
+      // 소비속도는 과거 실제 개봉 간격(교체 주기)의 평균을 우선 사용한다.
+      // 센서는 한 번에 하나만 착용하므로, 연속된 두 개봉일 사이 일수가 실제 교체 주기다.
+      // wearDays(사용기간 스펙)는 조기 교체·연장 사용 등 실제 습관과 다를 수 있어 이력이 있으면 후순위로 둔다.
+      const openedDates = state.inventory
+        .filter(it => it.openedAt)
+        .map(it => it.openedAt)
+        .sort();
+      let avgIntervalDays = null;
+      if (openedDates.length >= 2) {
+        const gaps = [];
+        for (let i = 1; i < openedDates.length; i++) {
+          const gap = daysBetween(openedDates[i - 1], openedDates[i]);
+          if (gap > 0) gaps.push(gap);
+        }
+        if (gaps.length) avgIntervalDays = gaps.reduce((s, g) => s + g, 0) / gaps.length;
+      }
+
+      // 이력이 부족하면 보유 중인 재고의 사용기간(wearDays) 평균으로 대체 추정한다
+      let avgWearDays = avgIntervalDays;
+      if (!avgWearDays) {
+        const totalWearDays = unopened.reduce((sum, it) => {
+          const t = sensorTypeById(it.typeId);
+          return sum + (t ? t.wearDays : 0);
+        }, 0);
+        avgWearDays = unopened.length ? totalWearDays / unopened.length : 0;
+      }
       const monthlyRate = avgWearDays ? MONTH_DAYS / avgWearDays : 0;
+      const rateSource = avgIntervalDays ? '실제 교체 주기 이력' : '보유 재고 사용기간 평균';
 
       if (!stock || !monthlyRate) {
         host.innerHTML = `<div class="mini" style="color:var(--muted);">현재 미개봉 재고가 없어 소진 시점을 예측할 수 없습니다.</div>`;
@@ -2650,7 +2670,7 @@
         : ` (설정 › 경고 기준에서 "평균 구매시 유효기간"을 입력하면 만료월도 안내합니다)`;
 
       host.innerHTML = `
-        <div class="mini" style="margin-bottom:10px; color:var(--muted);">현재 미개봉 보유량 ${unopened.length}개, 보유 중인 종류들의 평균 사용기간 기준 월 소비속도 약 ${monthlyRate.toFixed(1)}개로 계산했습니다. 종류는 구분하지 않으며, 명절 등 행사 시 저렴한 센서로 구입하는 방식을 감안해 총수량만 안내합니다.</div>
+        <div class="mini" style="margin-bottom:10px; color:var(--muted);">현재 미개봉 보유량 ${unopened.length}개, ${rateSource} 기준 월 소비속도 약 ${monthlyRate.toFixed(1)}개(교체 주기 약 ${avgWearDays.toFixed(1)}일)로 계산했습니다. 종류는 구분하지 않으며, 명절 등 행사 시 저렴한 센서로 구입하는 방식을 감안해 총수량만 안내합니다.</div>
         <div class="mini" style="padding:10px 12px; background:#f8fafc; border-radius:6px;"><strong>${runOutMonth.label}</strong> 이전 <strong>${totalNeed}개</strong> 구입 필요${suffix}</div>
       `;
     }
