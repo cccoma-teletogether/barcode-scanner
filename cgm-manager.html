@@ -2582,7 +2582,8 @@
       if (!plan) return '';
       const end = planEndDate(plan);
       if (plan._inUse) {
-        return `<span class="badge" style="background:#dcfce7; color:#15803d; border-color:#bbf7d0;">사용중 ${plan.startDate} ~ ${end}</span>`;
+        const label = plan._archived ? '실사용' : '사용중';
+        return `<span class="badge" style="background:#dcfce7; color:#15803d; border-color:#bbf7d0;">${label} ${plan.startDate} ~ ${end}</span>`;
       }
       return `<span class="badge" style="background:#eff6ff; color:var(--primary); border-color:#bfdbfe;">계획 ${plan.startDate} ~ ${end}</span>`;
     }
@@ -2783,6 +2784,8 @@
     // ── 사용계획 ──────────────────────────────────────────────────────────
 
     function planEndDate(plan) {
+      // 폐기된 실사용 이력은 계산상 종료일 대신 실제 종료일을 사용한다
+      if (plan._actualEnd) return plan._actualEnd;
       const type = sensorTypeById(plan.typeId);
       if (!type) return plan.startDate;
       // 시작일 저녁 부착 기준: 종료일 = 시작일 + 사용일수 (종료일 저녁까지 사용 가능)
@@ -2948,17 +2951,23 @@
       planAutoProposals = [];
     }
 
-    // 사용중인 재고를 가상 plan 형태로 반환 (id는 'inuse_<invId>')
+    // 개봉한 적이 있는 모든 재고를 가상 plan 형태로 반환 (id는 'inuse_<invId>')
+    // 진행중이든 폐기됐든 사용계획 탭에서 실제 사용 이력을 계속 볼 수 있도록 한다
     function inUsePseudoPlans() {
       return state.inventory
-        .filter(it => it.openedAt && !it.archived)
-        .map(it => ({
-          id: `inuse_${it.id}`,
-          invId: it.id,
-          typeId: it.typeId,
-          startDate: it.openedAt,
-          _inUse: true
-        }));
+        .filter(it => it.openedAt)
+        .map(it => {
+          const c = calc(it);
+          return {
+            id: `inuse_${it.id}`,
+            invId: it.id,
+            typeId: it.typeId,
+            startDate: it.openedAt,
+            _inUse: true,
+            _archived: !!it.archived,
+            _actualEnd: it.archived ? (it.archivedAt || c.wearEnd) : null
+          };
+        });
     }
 
     // inUse + 등록 계획 합산 (등록 계획이 있는 센서는 inUse 중복 제외)
@@ -2994,11 +3003,14 @@
             ? `<span style="color:${gapDays <= 3 ? 'var(--orange)' : 'var(--green)'}; font-size:11px;">종료→유효기간 여유 ${gapDays}일</span>`
             : '';
         if (p._inUse) {
+          const statusBadge = p._archived
+            ? `<span class="status archived" style="font-size:11px; padding:2px 6px;">폐기</span>`
+            : `<span class="status in_use" style="font-size:11px; padding:2px 6px;">사용중</span>`;
           return `
             <div class="plan-list-item" data-plan-id="${escapeAttr(p.id)}">
               <span class="plan-dot" style="background:${color}; outline:2px solid ${color}; outline-offset:1px;"></span>
               <div>
-                <div style="font-weight:700;">${escapeHtml(type?.name || '-')} <span class="status in_use" style="font-size:11px; padding:2px 6px;">사용중</span></div>
+                <div style="font-weight:700;">${escapeHtml(type?.name || '-')} ${statusBadge}</div>
                 <div class="meta">${p.startDate} ~ ${end} ${gapHtml}</div>
                 <div class="meta">${item?.serial ? `S/N ${escapeHtml(item.serial)}` : '일련번호 없음'} · 유효기간 ${fmtDate(item?.expiry)}</div>
               </div>
@@ -3071,7 +3083,8 @@
           const opacity = isStart ? '1' : '0.7';
           const inUseExtra = p._inUse ? `outline:1px solid ${color};outline-offset:-1px;` : '';
           const styleAttr = `background:${color};opacity:${opacity};${inUseExtra}`;
-          const titleAttr = escapeAttr(`${type?.name || '-'}${p._inUse ? ' [사용중]' : ''} ${p.startDate}~${end}${overEnd ? (grace ? ' ⚠유효기간 초과위험' : ' ⚠유효기간 초과') : ''}`);
+          const inUseLabel = p._inUse ? (p._archived ? ' [폐기]' : ' [사용중]') : '';
+          const titleAttr = escapeAttr(`${type?.name || '-'}${inUseLabel} ${p.startDate}~${end}${overEnd ? (grace ? ' ⚠유효기간 초과위험' : ' ⚠유효기간 초과') : ''}`);
           const draggable = p._inUse ? '' : 'draggable="true"';
           return `<span class="plan-bar${warnClass}" style="${styleAttr}" title="${titleAttr}" data-plan-bar="${escapeAttr(p.id)}" ${draggable}>${escapeHtml(label)}</span>`;
         }).join('');
