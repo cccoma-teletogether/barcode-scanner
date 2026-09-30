@@ -448,6 +448,10 @@
                 <div class="mini">개봉일</div>
                 <input id="formOpenedAt" type="date" />
               </label>
+              <label>
+                <div class="mini">실제 종료(폐기)일 · 입력 시 폐기 처리됨</div>
+                <input id="formArchivedAt" type="date" />
+              </label>
             </div>
             <label style="grid-column: 1 / -1;">
               <div class="mini">메모</div>
@@ -757,6 +761,7 @@
       formLot: document.getElementById('formLot'),
       formExpiry: document.getElementById('formExpiry'),
       formOpenedAt: document.getElementById('formOpenedAt'),
+      formArchivedAt: document.getElementById('formArchivedAt'),
       formNotes: document.getElementById('formNotes'),
       inventoryForm: document.getElementById('inventoryForm'),
       formTitle: document.getElementById('formTitle'),
@@ -3636,6 +3641,7 @@
       els.formLot.value = item.lot || '';
       els.formExpiry.value = item.expiry || '';
       els.formOpenedAt.value = item.openedAt || '';
+      els.formArchivedAt.value = item.archived ? (item.archivedAt || '') : '';
       els.formSerial.value = item.serial || '';
       els.formNotes.value = item.notes || '';
       if (!item.openedAt && calcItem.status === 'in_use') {
@@ -3803,6 +3809,7 @@
         );
         if (!proceed) return;
       }
+      const archivedAt = els.formArchivedAt.value || '';
       const payload = {
         id,
         typeId,
@@ -3811,7 +3818,8 @@
         expiry,
         openedAt: els.formOpenedAt.value || '',
         notes: els.formNotes.value.trim(),
-        archived: false,
+        archived: !!archivedAt,
+        archivedAt,
         createdAt: new Date().toISOString(),
         ...(lastScannedLabelImg ? { labelImg: lastScannedLabelImg } : {})
       };
