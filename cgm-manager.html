@@ -345,6 +345,13 @@
           </div>
           <div class="cal-grid" id="historyCalGrid"></div>
         </div>
+        <div class="panel section">
+          <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <strong>구입 계획 제안</strong>
+            <span class="mini" style="color:var(--muted);">사용기간 기준 소비속도 · 향후 12개월</span>
+          </div>
+          <div id="purchasePlan"></div>
+        </div>
       </section>
 
       <section id="view-inventory" class="panel section hidden">
@@ -630,6 +637,10 @@
                 <input id="typeGtin" placeholder="GTIN" />
                 <input id="typeModel" placeholder="모델명" />
               </div>
+              <label class="grid" style="gap:4px;">
+                <span class="mini">구매 시 보통 유효기간(개월) · 구매 계획 예측에 사용</span>
+                <input id="typeShelfMonths" type="number" min="1" step="1" placeholder="예: 12" />
+              </label>
               <div class="form-actions" style="padding-top: 4px;">
                 <button class="btn" type="button" id="cancelTypeEdit" disabled>취소</button>
                 <button class="btn primary" type="submit" id="typeSubmitBtn">센서 종류 추가</button>
@@ -779,6 +790,7 @@
       editingTypeId: document.getElementById('editingTypeId'),
       typeName: document.getElementById('typeName'),
       typeWearDays: document.getElementById('typeWearDays'),
+      typeShelfMonths: document.getElementById('typeShelfMonths'),
       typeColor: document.getElementById('typeColor'),
       typeGtin: document.getElementById('typeGtin'),
       typeModel: document.getElementById('typeModel'),
@@ -2256,7 +2268,7 @@
       els.viewButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === name));
       if (name === 'add') focusFormForNew();
       if (name === 'plan') renderPlan();
-      if (name === 'dashboard') renderHistoryCalendar();
+      if (name === 'dashboard') { renderHistoryCalendar(); renderPurchasePlan(); }
     }
 
     function renderToday() {
@@ -2475,6 +2487,81 @@
       `;
     }
 
+    // 종류별 사용기간(wearDays)에 따른 월 소비속도로 재고 소진을 시뮬레이션해 구입 시점·수량·유효기간을 제안
+    function renderPurchasePlan() {
+      const host = document.getElementById('purchasePlan');
+      if (!host) return;
+
+      const now = new Date();
+      const MONTH_SPAN = 12;
+      const MONTH_DAYS = 30; // 월 소비속도 계산용 근사치
+
+      const months = [];
+      for (let i = 0; i < MONTH_SPAN; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+        months.push({ key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`, y: d.getFullYear(), m: d.getMonth() + 1,
+          label: i === 0 ? '이번달' : (d.getMonth() === 0 ? `${d.getFullYear()}.1월` : `${d.getMonth() + 1}월`) });
+      }
+
+      const rows = [];
+      state.sensorTypes.forEach(type => {
+        const monthlyRate = MONTH_DAYS / type.wearDays; // 월 이론 소비량(개)
+        let stock = state.inventory.filter(it => it.typeId === type.id && !it.openedAt && !it.archived).length;
+        let carry = 0; // 소수 소비량 이월분
+        const purchases = [];
+
+        months.forEach(mo => {
+          carry += monthlyRate;
+          const consumeThisMonth = Math.floor(carry);
+          carry -= consumeThisMonth;
+          stock -= consumeThisMonth;
+          if (stock < 0) {
+            const need = -stock;
+            stock = 0;
+            const shelfMonths = type.shelfMonths || 0;
+            const expiryDate = shelfMonths
+              ? new Date(mo.y, mo.m - 1 + shelfMonths, 1)
+              : null;
+            const expiryLabel = expiryDate ? `${expiryDate.getFullYear()}-${pad(expiryDate.getMonth() + 1)}` : '미설정';
+            purchases.push({ month: mo.label, monthKey: mo.key, need, expiryLabel });
+          }
+        });
+
+        if (purchases.length) {
+          rows.push({ type, purchases, totalNeed: purchases.reduce((s, p) => s + p.need, 0) });
+        }
+      });
+
+      if (!rows.length) {
+        host.innerHTML = `<div class="mini" style="color:var(--muted);">향후 ${MONTH_SPAN}개월 내 추가 구입이 필요한 센서가 없습니다.</div>`;
+        return;
+      }
+
+      host.innerHTML = `
+        <div class="mini" style="margin-bottom:10px; color:var(--muted);">각 종류의 사용기간(일)으로 계산한 월 소비속도로 현재 미개봉 재고가 언제 바닥나는지 시뮬레이션한 결과입니다. 구매시 유효기간을 설정한 종류는 구매 시 유효기간(만료월)도 함께 안내합니다.</div>
+        <div class="list">
+          ${rows.map(r => {
+            const color = sensorTypeColor(r.type);
+            return `
+              <div class="item" style="grid-template-columns: 1fr; gap:8px;">
+                <div class="stack" style="justify-content:space-between; align-items:center;">
+                  <div class="name"><span class="badge" style="background:${color}22; color:${color}; border-color:${color}33; margin-right:6px;">■</span>${escapeHtml(r.type.name)}</div>
+                  <span class="badge">총 ${r.totalNeed}개 필요</span>
+                </div>
+                ${!r.type.shelfMonths ? `<div class="mini" style="color:var(--orange);">⚠ 구매시 유효기간이 설정되지 않아 만료월을 계산할 수 없습니다. 설정 › 센서 종류 관리에서 입력해주세요.</div>` : ''}
+                <div class="grid" style="gap:4px;">
+                  ${r.purchases.map(p => `
+                    <div class="mini" style="display:flex; justify-content:space-between; padding:4px 8px; background:#f8fafc; border-radius:6px;">
+                      <span><strong>${p.month}</strong> 이전 구입 필요</span>
+                      <span>${p.need}개 · 유효기간 ${p.expiryLabel}${p.expiryLabel !== '미설정' ? ' 만료분으로 구입 권장' : ''}</span>
+                    </div>`).join('')}
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
+      `;
+    }
+
     function emptyRow(text) {
       return `<div class="item" style="color:var(--muted);">${escapeHtml(text)}</div>`;
     }
@@ -2633,7 +2720,7 @@
         <div class="item" style="grid-template-columns: 1fr auto; align-items: center;">
           <div>
             <div class="name"><span class="badge" style="background:${sensorTypeColor(type)}22; color:${sensorTypeColor(type)}; border-color:${sensorTypeColor(type)}33; margin-right:6px;">■</span>${escapeHtml(type.name)}</div>
-            <div class="meta">사용기간 ${type.wearDays}일 · GTIN ${escapeHtml(type.gtin || '-')} · 모델 ${escapeHtml(type.model || '-')}</div>
+            <div class="meta">사용기간 ${type.wearDays}일 · GTIN ${escapeHtml(type.gtin || '-')} · 모델 ${escapeHtml(type.model || '-')}${type.shelfMonths ? ` · 구매시 유효기간 ${type.shelfMonths}개월` : ''}</div>
           </div>
           <div class="stack">
             <button class="btn small" data-edit-type="${type.id}">수정</button>
@@ -3520,6 +3607,7 @@
       els.typeColor.value = type.color || '#64748b';
       els.typeGtin.value = type.gtin || '';
       els.typeModel.value = type.model || '';
+      els.typeShelfMonths.value = type.shelfMonths || '';
       els.typeSubmitBtn.textContent = '센서 종류 저장';
       els.cancelTypeEdit.disabled = false;
     }
@@ -3644,6 +3732,7 @@
       renderToday();
       renderStats();
       renderHistoryCalendar();
+      renderPurchasePlan();
       renderInventory();
       renderChangelog();
       renderSettings();
@@ -3729,13 +3818,15 @@
       const wearDays = Number(els.typeWearDays.value);
       if (!name || !wearDays) return;
       const id = els.editingTypeId.value || uid('type');
+      const shelfMonths = Number(els.typeShelfMonths.value) || 0;
       const payload = {
         id,
         name,
         wearDays,
         color: els.typeColor.value || '#64748b',
         gtin: els.typeGtin.value.trim(),
-        model: els.typeModel.value.trim()
+        model: els.typeModel.value.trim(),
+        shelfMonths
       };
       const idx = state.sensorTypes.findIndex(t => t.id === id);
       if (idx >= 0) state.sensorTypes[idx] = payload;
