@@ -637,10 +637,6 @@
                 <input id="typeGtin" placeholder="GTIN" />
                 <input id="typeModel" placeholder="모델명" />
               </div>
-              <label class="grid" style="gap:4px;">
-                <span class="mini">구매 시 보통 유효기간(개월) · 구매 계획 예측에 사용</span>
-                <input id="typeShelfMonths" type="number" min="1" step="1" placeholder="예: 12" />
-              </label>
               <div class="form-actions" style="padding-top: 4px;">
                 <button class="btn" type="button" id="cancelTypeEdit" disabled>취소</button>
                 <button class="btn primary" type="submit" id="typeSubmitBtn">센서 종류 추가</button>
@@ -790,7 +786,6 @@
       editingTypeId: document.getElementById('editingTypeId'),
       typeName: document.getElementById('typeName'),
       typeWearDays: document.getElementById('typeWearDays'),
-      typeShelfMonths: document.getElementById('typeShelfMonths'),
       typeColor: document.getElementById('typeColor'),
       typeGtin: document.getElementById('typeGtin'),
       typeModel: document.getElementById('typeModel'),
@@ -2487,7 +2482,8 @@
       `;
     }
 
-    // 종류별 사용기간(wearDays)에 따른 월 소비속도로 재고 소진을 시뮬레이션해 구입 시점·수량·유효기간을 제안
+    // 종류 구분 없이 전체 미개봉 보유량을, 보유 중인 종류들의 평균 소비속도로 소진 시뮬레이션해 구입 시점·수량을 제안
+    // (실제 구매는 특정 종류를 정하지 않고 명절 등 행사 시 가장 저렴한 종류를 구입하는 방식이라 종류별 계산은 실효성이 없음)
     function renderPurchasePlan() {
       const host = document.getElementById('purchasePlan');
       if (!host) return;
@@ -2499,65 +2495,50 @@
       const months = [];
       for (let i = 0; i < MONTH_SPAN; i++) {
         const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-        months.push({ key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`, y: d.getFullYear(), m: d.getMonth() + 1,
+        months.push({ key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`,
           label: i === 0 ? '이번달' : (d.getMonth() === 0 ? `${d.getFullYear()}.1월` : `${d.getMonth() + 1}월`) });
       }
 
-      const rows = [];
-      state.sensorTypes.forEach(type => {
-        const monthlyRate = MONTH_DAYS / type.wearDays; // 월 이론 소비량(개)
-        let stock = state.inventory.filter(it => it.typeId === type.id && !it.openedAt && !it.archived).length;
-        let carry = 0; // 소수 소비량 이월분
-        const purchases = [];
+      const unopened = state.inventory.filter(it => !it.openedAt && !it.archived);
+      let stock = unopened.length;
 
-        months.forEach(mo => {
-          carry += monthlyRate;
-          const consumeThisMonth = Math.floor(carry);
-          carry -= consumeThisMonth;
-          stock -= consumeThisMonth;
-          if (stock < 0) {
-            const need = -stock;
-            stock = 0;
-            const shelfMonths = type.shelfMonths || 0;
-            const expiryDate = shelfMonths
-              ? new Date(mo.y, mo.m - 1 + shelfMonths, 1)
-              : null;
-            const expiryLabel = expiryDate ? `${expiryDate.getFullYear()}-${pad(expiryDate.getMonth() + 1)}` : '미설정';
-            purchases.push({ month: mo.label, monthKey: mo.key, need, expiryLabel });
-          }
-        });
+      // 현재 보유 중인 종류들의 사용기간을 반영한 전체 월 소비속도(개/월) 합산
+      const typesInUse = [...new Set(unopened.map(it => it.typeId))]
+        .map(id => sensorTypeById(id))
+        .filter(Boolean);
+      const monthlyRate = typesInUse.reduce((sum, t) => sum + MONTH_DAYS / t.wearDays, 0);
 
-        if (purchases.length) {
-          rows.push({ type, purchases, totalNeed: purchases.reduce((s, p) => s + p.need, 0) });
+      if (!stock || !monthlyRate) {
+        host.innerHTML = `<div class="mini" style="color:var(--muted);">현재 미개봉 재고가 없어 소진 시점을 예측할 수 없습니다.</div>`;
+        return;
+      }
+
+      let carry = 0;
+      const purchases = [];
+      months.forEach(mo => {
+        carry += monthlyRate;
+        const consumeThisMonth = Math.floor(carry);
+        carry -= consumeThisMonth;
+        stock -= consumeThisMonth;
+        if (stock < 0) {
+          purchases.push({ month: mo.label, need: -stock });
+          stock = 0;
         }
       });
 
-      if (!rows.length) {
-        host.innerHTML = `<div class="mini" style="color:var(--muted);">향후 ${MONTH_SPAN}개월 내 추가 구입이 필요한 센서가 없습니다.</div>`;
+      if (!purchases.length) {
+        host.innerHTML = `<div class="mini" style="color:var(--muted);">향후 ${MONTH_SPAN}개월 동안은 현재 보유량(${unopened.length}개)으로 충분할 것으로 예상됩니다.</div>`;
         return;
       }
 
       host.innerHTML = `
-        <div class="mini" style="margin-bottom:10px; color:var(--muted);">각 종류의 사용기간(일)으로 계산한 월 소비속도로 현재 미개봉 재고가 언제 바닥나는지 시뮬레이션한 결과입니다. 구매시 유효기간을 설정한 종류는 구매 시 유효기간(만료월)도 함께 안내합니다.</div>
-        <div class="list">
-          ${rows.map(r => {
-            const color = sensorTypeColor(r.type);
-            return `
-              <div class="item" style="grid-template-columns: 1fr; gap:8px;">
-                <div class="stack" style="justify-content:space-between; align-items:center;">
-                  <div class="name"><span class="badge" style="background:${color}22; color:${color}; border-color:${color}33; margin-right:6px;">■</span>${escapeHtml(r.type.name)}</div>
-                  <span class="badge">총 ${r.totalNeed}개 필요</span>
-                </div>
-                ${!r.type.shelfMonths ? `<div class="mini" style="color:var(--orange);">⚠ 구매시 유효기간이 설정되지 않아 만료월을 계산할 수 없습니다. 설정 › 센서 종류 관리에서 입력해주세요.</div>` : ''}
-                <div class="grid" style="gap:4px;">
-                  ${r.purchases.map(p => `
-                    <div class="mini" style="display:flex; justify-content:space-between; padding:4px 8px; background:#f8fafc; border-radius:6px;">
-                      <span><strong>${p.month}</strong> 이전 구입 필요</span>
-                      <span>${p.need}개 · 유효기간 ${p.expiryLabel}${p.expiryLabel !== '미설정' ? ' 만료분으로 구입 권장' : ''}</span>
-                    </div>`).join('')}
-                </div>
-              </div>`;
-          }).join('')}
+        <div class="mini" style="margin-bottom:10px; color:var(--muted);">현재 미개봉 보유량 ${unopened.length}개를, 보유 중인 종류들의 평균 사용기간 기준 월 소비속도(약 ${monthlyRate.toFixed(1)}개/월)로 소진 시뮬레이션한 결과입니다. 종류는 구분하지 않으며, 명절 등 행사 시 저렴한 센서로 구입하는 방식을 감안해 수량만 안내합니다.</div>
+        <div class="grid" style="gap:4px;">
+          ${purchases.map(p => `
+            <div class="mini" style="display:flex; justify-content:space-between; padding:6px 10px; background:#f8fafc; border-radius:6px;">
+              <span><strong>${p.month}</strong> 이전 구입 필요</span>
+              <span>${p.need}개</span>
+            </div>`).join('')}
         </div>
       `;
     }
@@ -2720,7 +2701,7 @@
         <div class="item" style="grid-template-columns: 1fr auto; align-items: center;">
           <div>
             <div class="name"><span class="badge" style="background:${sensorTypeColor(type)}22; color:${sensorTypeColor(type)}; border-color:${sensorTypeColor(type)}33; margin-right:6px;">■</span>${escapeHtml(type.name)}</div>
-            <div class="meta">사용기간 ${type.wearDays}일 · GTIN ${escapeHtml(type.gtin || '-')} · 모델 ${escapeHtml(type.model || '-')}${type.shelfMonths ? ` · 구매시 유효기간 ${type.shelfMonths}개월` : ''}</div>
+            <div class="meta">사용기간 ${type.wearDays}일 · GTIN ${escapeHtml(type.gtin || '-')} · 모델 ${escapeHtml(type.model || '-')}</div>
           </div>
           <div class="stack">
             <button class="btn small" data-edit-type="${type.id}">수정</button>
@@ -3607,7 +3588,6 @@
       els.typeColor.value = type.color || '#64748b';
       els.typeGtin.value = type.gtin || '';
       els.typeModel.value = type.model || '';
-      els.typeShelfMonths.value = type.shelfMonths || '';
       els.typeSubmitBtn.textContent = '센서 종류 저장';
       els.cancelTypeEdit.disabled = false;
     }
@@ -3818,15 +3798,13 @@
       const wearDays = Number(els.typeWearDays.value);
       if (!name || !wearDays) return;
       const id = els.editingTypeId.value || uid('type');
-      const shelfMonths = Number(els.typeShelfMonths.value) || 0;
       const payload = {
         id,
         name,
         wearDays,
         color: els.typeColor.value || '#64748b',
         gtin: els.typeGtin.value.trim(),
-        model: els.typeModel.value.trim(),
-        shelfMonths
+        model: els.typeModel.value.trim()
       };
       const idx = state.sensorTypes.findIndex(t => t.id === id);
       if (idx >= 0) state.sensorTypes[idx] = payload;
