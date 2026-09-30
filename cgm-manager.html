@@ -525,6 +525,12 @@
               <div class="stack" style="justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <strong>등록된 계획</strong>
                 <div class="stack" style="align-items:center;">
+                  <select id="planStatusFilter" style="max-width:130px;">
+                    <option value="">상태 전체</option>
+                    <option value="hide_archived">폐기 제외</option>
+                    <option value="planned">계획(예정)만</option>
+                    <option value="in_use">사용중만</option>
+                  </select>
                   <span class="badge" id="planCount">0건</span>
                   <button class="btn small danger" type="button" id="planDeleteAllBtn">전체 삭제</button>
                 </div>
@@ -834,6 +840,7 @@
       planEditConfirmBtn: document.getElementById('planEditConfirmBtn'),
       planEditShiftToggle: document.getElementById('planEditShiftToggle'),
       planCount: document.getElementById('planCount'),
+      planStatusFilter: document.getElementById('planStatusFilter'),
       planDeleteAllBtn: document.getElementById('planDeleteAllBtn'),
       planList: document.getElementById('planList'),
       calPrev: document.getElementById('calPrev'),
@@ -2983,10 +2990,18 @@
     }
 
     function renderPlanList() {
-      const plans = allActivePlans().sort((a, b) => a.startDate.localeCompare(b.startDate));
+      const statusFilter = els.planStatusFilter.value;
+      const allPlans = allActivePlans().sort((a, b) => a.startDate.localeCompare(b.startDate));
+      const plans = allPlans.filter(p => {
+        if (!statusFilter) return true;
+        if (statusFilter === 'hide_archived') return !p._archived;
+        if (statusFilter === 'in_use') return p._inUse && !p._archived;
+        if (statusFilter === 'planned') return !p._inUse;
+        return true;
+      });
       els.planCount.textContent = `${plans.length}건`;
       if (!plans.length) {
-        els.planList.innerHTML = '<div class="mini">등록된 계획이 없습니다.</div>';
+        els.planList.innerHTML = `<div class="mini">${allPlans.length ? '조건에 맞는 계획이 없습니다.' : '등록된 계획이 없습니다.'}</div>`;
         return;
       }
       els.planList.innerHTML = plans.map(p => {
@@ -3295,6 +3310,8 @@
       rerender();
       showToast('등록된 계획을 모두 삭제했습니다.');
     });
+
+    els.planStatusFilter.addEventListener('change', renderPlanList);
 
     els.planCancelBtn.addEventListener('click', closePlanForm);
 
