@@ -2502,11 +2502,14 @@
       const unopened = state.inventory.filter(it => !it.openedAt && !it.archived);
       let stock = unopened.length;
 
-      // 현재 보유 중인 종류들의 사용기간을 반영한 전체 월 소비속도(개/월) 합산
-      const typesInUse = [...new Set(unopened.map(it => it.typeId))]
-        .map(id => sensorTypeById(id))
-        .filter(Boolean);
-      const monthlyRate = typesInUse.reduce((sum, t) => sum + MONTH_DAYS / t.wearDays, 0);
+      // 센서는 한 번에 하나만 착용하므로, 보유 수량 가중 평균 사용기간으로 단일 소비속도를 계산한다
+      // (종류별 30/wearDays를 단순 합산하면 종류 수만큼 동시에 착용하는 것처럼 부풀려진다)
+      const totalWearDays = unopened.reduce((sum, it) => {
+        const t = sensorTypeById(it.typeId);
+        return sum + (t ? t.wearDays : 0);
+      }, 0);
+      const avgWearDays = unopened.length ? totalWearDays / unopened.length : 0;
+      const monthlyRate = avgWearDays ? MONTH_DAYS / avgWearDays : 0;
 
       if (!stock || !monthlyRate) {
         host.innerHTML = `<div class="mini" style="color:var(--muted);">현재 미개봉 재고가 없어 소진 시점을 예측할 수 없습니다.</div>`;
