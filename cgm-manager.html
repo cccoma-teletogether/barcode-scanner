@@ -1232,7 +1232,7 @@
       return state.sensorTypes.find(t => t.id === id) || DEFAULT_SENSOR_TYPE_MAP[id] || null;
     }
     // 유효기간 하루 전까지 개봉하면 유효기간이 지나도 사용종료일까지 사용 가능한 센서
-    const EXPIRY_GRACE_TYPE_IDS = new Set(['caresens_air', 'barogen_fit']);
+    const EXPIRY_GRACE_TYPE_IDS = new Set(['caresens_air', 'barogen_fit', 'gs1']);
     function expiryGraceApplies(typeId, startDate, expiry) {
       return EXPIRY_GRACE_TYPE_IDS.has(typeId) && !!startDate && !!expiry && startDate < expiry;
     }
@@ -3151,7 +3151,7 @@
         const item = state.inventory.find(x => x.id === p.invId);
         const expiry = item?.expiry || '';
         const overEnd = expiry && end > expiry;
-        // 유효기간 전 시작하는 유예 대상(케어센스에어·바로잰핏)은 초과해도 사용 가능 → 위험 경고로 표시
+        // 유효기간 전 시작하는 유예 대상(케어센스에어·바로잰핏·GS1)은 초과해도 사용 가능 → 위험 경고로 표시
         const grace = expiryGraceApplies(p.typeId, p.startDate, expiry);
         // 종료일~유효기간 간격
         const gapDays = expiry && !overEnd ? daysBetween(end, expiry) : null;
