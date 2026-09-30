@@ -570,6 +570,11 @@
                 <input id="alertDays" type="number" min="1" step="1" style="max-width: 160px;" />
                 <button class="btn primary" id="saveAlertDays" type="button">저장</button>
               </div>
+              <div class="mini" style="margin:12px 0 10px;">평균 구매시 유효기간(개월) · 구입 계획의 만료월 추정에 사용</div>
+              <div class="stack">
+                <input id="avgShelfMonths" type="number" min="1" step="1" style="max-width: 160px;" placeholder="예: 12" />
+                <button class="btn primary" id="saveAvgShelfMonths" type="button">저장</button>
+              </div>
               <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line);">
                 <div class="mini" style="margin-bottom: 8px;">교체일 알림</div>
                 <button class="btn" id="notifyToggle" type="button">알림 켜기</button>
@@ -687,7 +692,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.23.0/umd/index.min.js"></script>
   <script>
     const STORAGE_KEY = 'cgm_v5';
-    const DEFAULT_SETTINGS = { alertDays: 30 };
+    const DEFAULT_SETTINGS = { alertDays: 30, avgShelfMonths: 0 };
     const DEFAULT_SENSOR_TYPES = [
       { id: 'caresens_air', name: 'CareSens Air', wearDays: 15, color: '#00c6fb', gtin: '08809126640655', model: 'CGM-ST-002' },
       { id: 'barogen_fit', name: 'Barozen Fit', wearDays: 15, color: '#43e97b', gtin: '08806712005959', model: 'CGM-ST-003' },
@@ -771,6 +776,8 @@
       changelogList: document.getElementById('changelogList'),
       changelogCount: document.getElementById('changelogCount'),
       alertDays: document.getElementById('alertDays'),
+      avgShelfMonths: document.getElementById('avgShelfMonths'),
+      saveAvgShelfMonths: document.getElementById('saveAvgShelfMonths'),
       saveAlertDays: document.getElementById('saveAlertDays'),
       exportData: document.getElementById('exportData'),
       importFile: document.getElementById('importFile'),
@@ -2495,7 +2502,7 @@
       const months = [];
       for (let i = 0; i < MONTH_SPAN; i++) {
         const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-        months.push({ key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}`,
+        months.push({ y: d.getFullYear(), m: d.getMonth() + 1,
           label: i === 0 ? '이번달' : (d.getMonth() === 0 ? `${d.getFullYear()}.1월` : `${d.getMonth() + 1}월`) });
       }
 
@@ -2525,7 +2532,7 @@
         const consumeThisMonth = Math.floor(carry);
         carry -= consumeThisMonth;
         stock -= consumeThisMonth;
-        if (stock < 0) runOutMonth = mo.label;
+        if (stock < 0) runOutMonth = mo;
       });
 
       if (!runOutMonth) {
@@ -2536,12 +2543,21 @@
       // 향후 12개월 총 소비량 대비 부족분 = 지금 구매해두면 12개월을 버틸 수 있는 수량
       const totalNeed = Math.max(0, Math.ceil(monthlyRate * MONTH_SPAN) - unopened.length);
 
+      // 부족 시점에 구입한다고 가정할 때의 예상 유효기간(만료월) = 부족월 + 평균 구매시 유효기간(개월)
+      const avgShelfMonths = Number(state.settings.avgShelfMonths || 0);
+      let expiryLabel = '';
+      if (avgShelfMonths) {
+        const expiryDate = new Date(runOutMonth.y, runOutMonth.m - 1 + avgShelfMonths, 1);
+        expiryLabel = `${expiryDate.getFullYear()}-${pad(expiryDate.getMonth() + 1)}`;
+      }
+
+      const suffix = expiryLabel
+        ? `, 유효기간 ${expiryLabel} 만료분으로 구입 권장`
+        : ` (설정 › 경고 기준에서 "평균 구매시 유효기간"을 입력하면 만료월도 안내합니다)`;
+
       host.innerHTML = `
         <div class="mini" style="margin-bottom:10px; color:var(--muted);">현재 미개봉 보유량 ${unopened.length}개, 보유 중인 종류들의 평균 사용기간 기준 월 소비속도 약 ${monthlyRate.toFixed(1)}개로 계산했습니다. 종류는 구분하지 않으며, 명절 등 행사 시 저렴한 센서로 구입하는 방식을 감안해 총수량만 안내합니다.</div>
-        <div class="mini" style="display:flex; justify-content:space-between; padding:10px 12px; background:#f8fafc; border-radius:6px;">
-          <span><strong>${runOutMonth}</strong>부터 재고 부족 예상</span>
-          <span><strong>${totalNeed}개</strong> 구입 시 향후 ${MONTH_SPAN}개월분 확보</span>
-        </div>
+        <div class="mini" style="padding:10px 12px; background:#f8fafc; border-radius:6px;"><strong>${runOutMonth.label}</strong> 이전 <strong>${totalNeed}개</strong> 구입 필요${suffix}</div>
       `;
     }
 
@@ -2689,6 +2705,7 @@
 
     function renderSettings() {
       els.alertDays.value = state.settings.alertDays ?? 30;
+      els.avgShelfMonths.value = state.settings.avgShelfMonths || '';
       if (typeof updateNotifyToggleUI === 'function') updateNotifyToggleUI();
       const backupInfo = document.getElementById('autoBackupInfo');
       if (backupInfo) {
@@ -3842,6 +3859,14 @@
       state.settings.alertDays = v;
       saveState();
       rerender();
+    });
+
+    els.saveAvgShelfMonths.addEventListener('click', () => {
+      const v = Math.max(0, Number(els.avgShelfMonths.value || 0));
+      state.settings.avgShelfMonths = v;
+      saveState();
+      rerender();
+      showToast('평균 구매시 유효기간을 저장했습니다.');
     });
 
     // ── 교체일 알림 ─────────────────────────────────────────────────────────
