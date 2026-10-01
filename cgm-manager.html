@@ -318,7 +318,7 @@
     <main class="main">
       <section id="view-dashboard" class="grid gap-12">
         <div class="grid cols-5" id="statsRow"></div>
-        <div class="split">
+        <div class="split" id="dashboardSplitPanels">
           <div class="panel section">
             <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
               <strong>우선 사용 대상</strong>
@@ -334,7 +334,7 @@
             <div class="list" id="typeSummary"></div>
           </div>
         </div>
-        <div class="panel section">
+        <div class="panel section" id="usageStatsPanel">
           <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <strong>유효기간 현황</strong>
             <span class="badge" id="usageStatTotal"></span>
@@ -2444,13 +2444,13 @@
             </div>
           </div>
         `;
-        const host = els.statsRow.parentElement;
+        const host = document.getElementById('dashboardSplitPanels');
         let existing = document.getElementById('currentUseCard');
         if (existing) existing.remove();
         const wrapper = document.createElement('div');
         wrapper.id = 'currentUseCard';
         wrapper.innerHTML = activeCard;
-        host.insertAdjacentElement('afterend', wrapper);
+        host.insertAdjacentElement('beforebegin', wrapper);
       } else {
         const existing = document.getElementById('currentUseCard');
         if (existing) existing.remove();
