@@ -81,7 +81,10 @@
 
     /* 사용계획 달력 */
     .plan-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
-    @media (max-width: 840px) { .plan-layout { grid-template-columns: 1fr; } }
+    @media (max-width: 840px) {
+      .plan-layout { grid-template-columns: 1fr; }
+      .plan-calendar-panel { order: -1; }
+    }
     .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
     .cal-nav strong { font-size: 15px; }
     .cal-grid {
@@ -549,8 +552,8 @@
               <div class="list" id="planList"></div>
             </div>
           </div>
-          <!-- 우측: 달력 -->
-          <div class="panel section">
+          <!-- 우측: 달력 (좁은 화면에서는 맨 위로) -->
+          <div class="panel section plan-calendar-panel">
             <div class="cal-nav">
               <button class="btn small" id="calPrev">&#8249;</button>
               <strong id="calTitle"></strong>
