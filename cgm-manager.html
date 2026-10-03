@@ -85,6 +85,7 @@
       .plan-layout { grid-template-columns: 1fr; }
       .plan-calendar-panel { order: -1; }
     }
+    .plan-calendar-panel:focus { outline: none; }
     .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
     .cal-nav strong { font-size: 15px; }
     .cal-grid {
@@ -554,7 +555,7 @@
             </div>
           </div>
           <!-- 우측: 달력 (좁은 화면에서는 맨 위로) -->
-          <div class="panel section plan-calendar-panel">
+          <div class="panel section plan-calendar-panel" id="planCalendarPanel" tabindex="-1">
             <div class="cal-nav">
               <button class="btn small" id="calPrev">&#8249;</button>
               <strong id="calTitle"></strong>
@@ -941,6 +942,7 @@
       planCancelBtn: document.getElementById('planCancelBtn'),
       planConfirmBtn: document.getElementById('planConfirmBtn'),
       planEditPanel: document.getElementById('planEditPanel'),
+      planCalendarPanel: document.getElementById('planCalendarPanel'),
       planEditTitle: document.getElementById('planEditTitle'),
       planEditDate: document.getElementById('planEditDate'),
       planEditShiftInfo: document.getElementById('planEditShiftInfo'),
@@ -3525,6 +3527,19 @@
       autoAdvancePlanSelection();
     });
 
+    // 화면 상단에 고정된 헤더(.topbar)에 가려지지 않도록 높이만큼 보정해서 대상 패널로 스크롤
+    function scrollToPanel(el) {
+      const header = document.querySelector('.topbar');
+      const offset = (header ? header.offsetHeight : 0) + 8;
+      const top = el.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    }
+
+    function focusPlanCalendar() {
+      els.planCalendarPanel.focus({ preventScroll: true });
+      scrollToPanel(els.planCalendarPanel);
+    }
+
     function openPlanEdit(planId) {
       const plan = state.plans.find(p => p.id === planId);
       if (!plan) return;
@@ -3537,6 +3552,9 @@
       els.planEditPanel.style.display = '';
       // 추가 폼 닫기
       closePlanForm();
+      // 패널 배치가 확정된 뒤에 수정 패널로 이동하고 시작일 입력칸에 포커스
+      scrollToPanel(els.planEditPanel);
+      els.planEditDate.focus({ preventScroll: true });
     }
 
     function updatePlanEditShiftInfo() {
@@ -3592,7 +3610,7 @@
       const newStart = els.planEditDate.value;
       if (!newStart) { alert('날짜를 선택해주세요.'); return; }
       const delta = daysBetween(plan.startDate, newStart);
-      if (delta === 0) { closePlanEdit(); return; }
+      if (delta === 0) { closePlanEdit(); focusPlanCalendar(); return; }
 
       if (els.planEditShiftToggle.checked) {
         // 이 계획 포함, 같은 종류 이후 계획 모두 밀기
@@ -3623,6 +3641,7 @@
       saveState();
       closePlanEdit();
       rerender();
+      focusPlanCalendar();
     });
 
     els.calPrev.addEventListener('click', () => {
