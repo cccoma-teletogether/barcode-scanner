@@ -373,6 +373,7 @@
           <select id="filterType"></select>
           <select id="filterStatus">
             <option value="">상태 전체</option>
+            <option value="hide_archived">폐기 제외</option>
             <option value="ready">미개봉</option>
             <option value="shelf_warning">유효기간 임박</option>
             <option value="expired">만료</option>
@@ -2796,7 +2797,11 @@
       const list = state.inventory
         .map(it => ({ ...it, calc: calc(it) }))
         .filter(it => !typeFilter || it.typeId === typeFilter)
-        .filter(it => !statusFilter || it.calc.status === statusFilter)
+        .filter(it => {
+          if (!statusFilter) return true;
+          if (statusFilter === 'hide_archived') return it.calc.status !== 'archived';
+          return it.calc.status === statusFilter;
+        })
         .sort((a, b) => compareItems(a, b, sortBy));
 
       els.inventoryList.innerHTML = list.length ? list.map(item => {
