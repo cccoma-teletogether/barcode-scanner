@@ -65,9 +65,9 @@
       .grid.cols-5, .grid.cols-4, .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (max-width: 640px) {
-      /* 헤더: 제목·부제·오늘 날짜를 세로로 쌓지 않고 한 줄로 압축 */
+      /* 헤더: 제목·부제는 두 줄로 쌓고, 오늘 날짜는 같은 높이의 오른쪽에 둔다 */
       .topbar { padding: 8px 12px; gap: 8px; }
-      .title { flex-direction: row; align-items: baseline; gap: 6px; min-width: 0; }
+      .title { flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
       .title h1 { font-size: 16px; }
       .title .sub { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .today { font-size: 11px; }
