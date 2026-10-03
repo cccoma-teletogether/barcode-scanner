@@ -65,8 +65,19 @@
       .grid.cols-5, .grid.cols-4, .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (max-width: 640px) {
-      .topbar { align-items: flex-start; flex-direction: column; }
+      /* 헤더: 제목·부제·오늘 날짜를 세로로 쌓지 않고 한 줄로 압축 */
+      .topbar { padding: 8px 12px; gap: 8px; }
+      .title { flex-direction: row; align-items: baseline; gap: 6px; min-width: 0; }
+      .title h1 { font-size: 16px; }
+      .title .sub { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .today { font-size: 11px; }
       .grid.cols-5, .grid.cols-4, .grid.cols-3, .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      /* 대시보드 KPI: 카드 5개를 한 줄로, 라벨과 숫자만 남긴다 */
+      #statsRow { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+      #statsRow .stat { padding: 8px 4px; min-height: 0; gap: 2px; align-items: center; text-align: center; }
+      #statsRow .stat .label { font-size: 10px; white-space: nowrap; }
+      #statsRow .stat .value { font-size: 20px; line-height: 1.1; }
+      #statsRow .stat .hint, #statsRow .stat .bar { display: none; }
       .nav { grid-template-columns: repeat(3, 1fr); }
       .main { width: calc(100% - 16px); margin-top: 8px; }
     }
