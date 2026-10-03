@@ -102,6 +102,7 @@
     .cal-day.today-cell { border-color: var(--primary); background: #eff6ff; }
     .cal-day.today-cell .cal-day-num { color: var(--primary); font-weight: 700; }
     .cal-day.holiday-cell { background: #fef2f2; }
+    .cal-day.edit-target { border-color: var(--orange); box-shadow: inset 0 0 0 2px var(--orange); }
     .cal-day-head {
       display: flex; align-items: baseline; gap: 3px; margin-bottom: 2px;
       overflow: hidden;
@@ -3253,6 +3254,11 @@
         html += `<div class="cal-day other-month"><span class="cal-day-num">${prev.getDate()}</span></div>`;
       }
 
+      // 시작일을 수정 중인 계획이 있으면 그 시작일 칸을 표시한다
+      const editingStart = planEditingPlanId
+        ? state.plans.find(p => p.id === planEditingPlanId)?.startDate
+        : null;
+
       // 이번 달 날짜별 계획 막대 계산
       for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
@@ -3289,7 +3295,7 @@
 
         const numClass = holiday ? 'holiday' : (dow === 0 ? 'sunday' : (dow === 6 ? 'saturday' : ''));
         const holidayLabel = holiday ? `<span class="cal-holiday-label" title="${escapeAttr(holiday)}">${escapeHtml(holiday)}</span>` : '';
-        html += `<div class="cal-day${isToday ? ' today-cell' : ''}${holiday ? ' holiday-cell' : ''}" data-date="${dateStr}">
+        html += `<div class="cal-day${isToday ? ' today-cell' : ''}${holiday ? ' holiday-cell' : ''}${dateStr === editingStart ? ' edit-target' : ''}" data-date="${dateStr}">
           <div class="cal-day-head">
             <span class="cal-day-num${numClass ? ' ' + numClass : ''}">${d}</span>
             ${holidayLabel}
@@ -3558,6 +3564,11 @@
       els.planEditPanel.style.display = '';
       // 추가 폼과 자동 제안 패널은 닫는다
       closePlanPanelsExcept('edit');
+      // 달력도 이 계획의 시작일이 있는 달로 넘겨 시작일 칸을 표시한다 (달 높이가 달라질 수 있으니 스크롤보다 먼저)
+      const [startYear, startMonth] = plan.startDate.split('-').map(Number);
+      planCalYear = startYear;
+      planCalMonth = startMonth - 1;
+      renderCalendar();
       // 패널 배치가 확정된 뒤에 수정 패널로 이동하고 시작일 입력칸에 포커스
       scrollToPanel(els.planEditPanel);
       els.planEditDate.focus({ preventScroll: true });
@@ -3582,9 +3593,12 @@
     }
 
     function closePlanEdit() {
+      const wasEditing = planEditingPlanId !== null;
       planEditingPlanId = null;
       els.planEditPanel.style.display = 'none';
       els.planEditShiftInfo.textContent = '';
+      // 달력에 표시해 둔 시작일 칸 표시를 지운다
+      if (wasEditing) renderCalendar();
     }
 
     els.planList.addEventListener('click', (e) => {
@@ -3645,6 +3659,13 @@
         plan.startDate = newStart;
       }
       saveState();
+      // 저장된 계획의 새 시작일이 있는 달로 달력을 맞춰, 옮긴 결과가 바로 보이게 한다
+      const savedStart = state.plans.find(p => p.id === planEditingPlanId)?.startDate;
+      if (savedStart) {
+        const [savedYear, savedMonth] = savedStart.split('-').map(Number);
+        planCalYear = savedYear;
+        planCalMonth = savedMonth - 1;
+      }
       closePlanEdit();
       rerender();
       focusPlanCalendar();
