@@ -3697,18 +3697,25 @@
     let dragPlanId = null;       // 막대 이동 드래그
     let dragSensorInvId = null;  // 센서 목록 → 달력 드래그
 
+    // 드래그가 끝나면 호출. 드롭으로 목록이 다시 그려져 원본 요소가 사라지면 dragend가 닿지 않으므로,
+    // 드래그를 시작할 때와 드롭 처리 끝에서 직접 호출해 이전 드래그 상태가 남지 않게 한다.
+    function resetDragState() {
+      dragPlanId = null;
+      dragSensorInvId = null;
+      document.querySelectorAll('.cal-day.drag-over').forEach(el => el.classList.remove('drag-over'));
+    }
+
     // 센서 목록에서 드래그 시작
     els.planSensorList.addEventListener('dragstart', (e) => {
       const btn = e.target.closest('button[data-plan-inv]');
       if (!btn || btn.disabled) return;
+      resetDragState();
       dragSensorInvId = btn.dataset.planInv;
       e.dataTransfer.effectAllowed = 'copy';
       e.dataTransfer.setData('text/plain', dragSensorInvId);
     });
 
-    els.planSensorList.addEventListener('dragend', () => {
-      dragSensorInvId = null;
-    });
+    els.planSensorList.addEventListener('dragend', resetDragState);
 
     // 달력 막대 드래그 시작
     els.calGrid.addEventListener('dragstart', (e) => {
@@ -3717,6 +3724,7 @@
       const planId = bar.dataset.planBar;
       const plan = state.plans.find(p => p.id === planId);
       if (!plan) return;
+      resetDragState();
       dragPlanId = planId;
       bar.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
@@ -3748,12 +3756,16 @@
       e.preventDefault();
       document.querySelectorAll('.cal-day.drag-over').forEach(el => el.classList.remove('drag-over'));
       const cell = e.target.closest('.cal-day[data-date]');
+      // 처리 중에는 값을 지역 변수로 옮겨 두고 전역 드래그 상태는 바로 비운다 (이후 rerender로 원본이 사라져도 안전)
+      const sensorInvId = dragSensorInvId;
+      const planId = dragPlanId;
+      resetDragState();
       if (!cell) return;
       const newStart = cell.dataset.date;
 
       // 센서 목록 → 달력: 새 계획 추가
-      if (dragSensorInvId) {
-        const item = state.inventory.find(x => x.id === dragSensorInvId);
+      if (sensorInvId) {
+        const item = state.inventory.find(x => x.id === sensorInvId);
         if (!item) return;
         const type = sensorTypeById(item.typeId);
         const endDate = addDays(newStart, type?.wearDays || 1);
@@ -3775,8 +3787,8 @@
       }
 
       // 달력 막대 이동
-      if (dragPlanId) {
-        const plan = state.plans.find(p => p.id === dragPlanId);
+      if (planId) {
+        const plan = state.plans.find(p => p.id === planId);
         if (!plan || newStart === plan.startDate) return;
         const delta = daysBetween(plan.startDate, newStart);
         shiftPlansAfter(plan.typeId, plan.startDate, delta, null);
