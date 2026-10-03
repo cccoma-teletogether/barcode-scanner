@@ -3116,9 +3116,15 @@
       }).join('');
     }
 
+    // 계획 추가 폼, 시작일 수정, 자동 제안 패널은 한 번에 하나만 열려 있도록 자신을 뺀 나머지를 닫는다
+    function closePlanPanelsExcept(keep) {
+      if (keep !== 'form') closePlanForm();
+      if (keep !== 'edit') closePlanEdit();
+      if (keep !== 'auto') closeAutoPlanPanel();
+    }
+
     function openAutoPlanPanel() {
-      closePlanForm();
-      closePlanEdit();
+      closePlanPanelsExcept('auto');
       planAutoProposals = buildAutoPlanProposals();
       renderAutoPlanList();
       els.planAutoPanel.style.display = '';
@@ -3404,7 +3410,7 @@
 
     // plan 폼 열기
     function openPlanForm(invId) {
-      closeAutoPlanPanel();
+      closePlanPanelsExcept('form');
       planSelectedInvId = invId;
       const item = state.inventory.find(x => x.id === invId);
       const type = sensorTypeById(item?.typeId);
@@ -3550,8 +3556,8 @@
       els.planEditShiftToggle.checked = false;
       updatePlanEditShiftInfo();
       els.planEditPanel.style.display = '';
-      // 추가 폼 닫기
-      closePlanForm();
+      // 추가 폼과 자동 제안 패널은 닫는다
+      closePlanPanelsExcept('edit');
       // 패널 배치가 확정된 뒤에 수정 패널로 이동하고 시작일 입력칸에 포커스
       scrollToPanel(els.planEditPanel);
       els.planEditDate.focus({ preventScroll: true });
