@@ -321,6 +321,21 @@
     <main class="main">
       <section id="view-dashboard" class="grid gap-12">
         <div class="grid cols-5" id="statsRow"></div>
+        <div class="panel section">
+          <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <strong>실제 사용 이력</strong>
+            <span class="mini" style="color:var(--muted);">개봉일 ~ 실제/예상 종료일 기준</span>
+          </div>
+          <div class="cal-nav">
+            <button class="btn small" id="historyCalPrev">&#8249;</button>
+            <strong id="historyCalTitle"></strong>
+            <div style="display:flex;gap:6px;">
+              <button class="btn small" id="historyCalToday">오늘</button>
+              <button class="btn small" id="historyCalNext">&#8250;</button>
+            </div>
+          </div>
+          <div class="cal-grid" id="historyCalGrid"></div>
+        </div>
         <div class="split" id="dashboardSplitPanels">
           <div class="panel section">
             <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
@@ -350,21 +365,6 @@
             <span class="mini" style="color:var(--muted);">사용기간 기준 소비속도 · 향후 12개월</span>
           </div>
           <div id="purchasePlan"></div>
-        </div>
-        <div class="panel section">
-          <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <strong>실제 사용 이력</strong>
-            <span class="mini" style="color:var(--muted);">개봉일 ~ 실제/예상 종료일 기준</span>
-          </div>
-          <div class="cal-nav">
-            <button class="btn small" id="historyCalPrev">&#8249;</button>
-            <strong id="historyCalTitle"></strong>
-            <div style="display:flex;gap:6px;">
-              <button class="btn small" id="historyCalToday">오늘</button>
-              <button class="btn small" id="historyCalNext">&#8250;</button>
-            </div>
-          </div>
-          <div class="cal-grid" id="historyCalGrid"></div>
         </div>
       </section>
 
