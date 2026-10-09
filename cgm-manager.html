@@ -268,6 +268,8 @@
       border-radius: var(--radius);
       object-fit: cover;
     }
+    .btn.hint { outline: 3px solid #93c5fd; outline-offset: 2px; animation: hintPulse 1s ease-in-out 4; }
+    @keyframes hintPulse { 50% { outline-color: transparent; } }
     .scan-image {
       width: 100%;
       border: 1px solid var(--line);
@@ -428,16 +430,19 @@
                 <select id="scanTypeSelect"></select>
               </label>
               <div class="stack">
-                <label class="btn primary" for="scanCaptureInput" style="cursor:pointer;">카메라로 촬영</label>
+                <button type="button" class="btn primary" id="scanCameraStart">카메라로 스캔</button>
+                <button type="button" class="btn danger hidden" id="scanCameraStop">카메라 중지</button>
+                <label class="btn" for="scanCaptureInput" style="cursor:pointer;">카메라로 촬영</label>
                 <input id="scanCaptureInput" type="file" accept="image/*" capture="environment" class="hidden" />
-                <label class="btn" for="scanImageInput" style="cursor:pointer;">이미지 불러오기</label>
+                <label class="btn" id="scanImageLabel" for="scanImageInput" style="cursor:pointer;">이미지 불러오기</label>
                 <input id="scanImageInput" type="file" accept="image/*" class="hidden" />
               </div>
+              <video id="scanVideo" class="scan-video hidden" playsinline muted autoplay></video>
               <div class="stack" style="align-items:center;">
                 <span class="badge" id="scanGuideBadge">촬영 가이드</span>
                 <span class="mini" id="scanGuideText">센서 종류를 먼저 선택하면 제품별 촬영 전략을 적용합니다.</span>
               </div>
-              <div class="scan-result" id="scanStatus">카메라로 찍은 사진이나 이미지 파일을 넣으면 인식합니다.</div>
+              <div class="scan-result" id="scanStatus">"카메라로 스캔"으로 바로 인식하거나, 이미지 파일을 불러오세요.</div>
               <img id="scanImagePreview" class="scan-image hidden" alt="scan preview" />
               <div class="mini">인식되면 LOT, 유효기간, 센서 종류, 일련번호를 가능한 범위에서 자동 채웁니다.</div>
             </div>
@@ -897,6 +902,10 @@
       formTitle: document.getElementById('formTitle'),
       formModeBadge: document.getElementById('formModeBadge'),
       cancelEdit: document.getElementById('cancelEdit'),
+      scanCameraStart: document.getElementById('scanCameraStart'),
+      scanCameraStop: document.getElementById('scanCameraStop'),
+      scanVideo: document.getElementById('scanVideo'),
+      scanImageLabel: document.getElementById('scanImageLabel'),
       scanCaptureInput: document.getElementById('scanCaptureInput'),
       scanImageInput: document.getElementById('scanImageInput'),
       scanStatus: document.getElementById('scanStatus'),
@@ -1811,6 +1820,143 @@
 
     function stopScan() {
       try { scanReader?.reset?.(); } catch {}
+      stopCameraScan();
+    }
+
+    // ── 실시간 카메라 스캔 ────────────────────────────────────────────────
+    let cameraStream = null;
+    let cameraScanActive = false;
+    let cameraScanToken = 0; // 시작/중지 시마다 증가 — 오래된 인식 루프를 끊는 용도
+    let imageHintTimer = null;
+
+    function updateCameraButtons(running) {
+      els.scanCameraStart.classList.toggle('hidden', running);
+      els.scanCameraStop.classList.toggle('hidden', !running);
+      els.scanVideo.classList.toggle('hidden', !running);
+    }
+
+    // 카메라를 쓸 수 없을 때: 사유 안내 + "이미지 불러오기" 버튼 강조
+    function showCameraFallback(reason) {
+      setScanStatus(`${reason} 아래 "이미지 불러오기"로 사진 파일을 선택해 주세요.`, 'err');
+      els.scanImageLabel.classList.add('hint');
+      clearTimeout(imageHintTimer);
+      imageHintTimer = setTimeout(() => els.scanImageLabel.classList.remove('hint'), 5000);
+    }
+
+    function cameraSupportIssue() {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        return '이 환경에서는 카메라 스캔을 사용할 수 없습니다 (HTTPS 또는 localhost 접속과 카메라 지원 브라우저가 필요합니다).';
+      }
+      if (!window.ZXingWASM?.readBarcodes && !('BarcodeDetector' in window)) {
+        return '바코드 인식 엔진을 불러오지 못했습니다 (인터넷 연결을 확인해 주세요).';
+      }
+      return '';
+    }
+
+    function cameraErrorMessage(err) {
+      const name = err?.name || '';
+      if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError') {
+        return '카메라 권한이 거부되었습니다. 브라우저 주소창의 사이트 설정에서 카메라를 허용해 주세요.';
+      }
+      if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || name === 'OverconstrainedError') {
+        return '사용 가능한 카메라를 찾지 못했습니다.';
+      }
+      if (name === 'NotReadableError' || name === 'AbortError' || name === 'TrackStartError') {
+        return '카메라를 사용할 수 없습니다. 다른 앱이 카메라를 사용 중인지 확인해 주세요.';
+      }
+      return `카메라를 시작하지 못했습니다${err?.message ? ` (${err.message})` : ''}.`;
+    }
+
+    function stopCameraScan(message = '', tone = 'info') {
+      const wasActive = cameraScanActive || !!cameraStream;
+      cameraScanToken += 1;
+      cameraScanActive = false;
+      try { cameraStream?.getTracks().forEach(track => track.stop()); } catch {}
+      cameraStream = null;
+      try { els.scanVideo.pause(); } catch {}
+      els.scanVideo.srcObject = null;
+      updateCameraButtons(false);
+      if (wasActive && message) setScanStatus(message, tone);
+    }
+
+    async function startCameraScan() {
+      if (cameraScanActive) return;
+      clearTimeout(imageHintTimer);
+      els.scanImageLabel.classList.remove('hint');
+      const issue = cameraSupportIssue();
+      if (issue) { showCameraFallback(issue); return; }
+
+      const token = ++cameraScanToken;
+      setScanStatus('카메라를 켜는 중입니다… 권한 요청이 나오면 허용해 주세요.', 'busy');
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false
+        });
+      } catch (err) {
+        if (token === cameraScanToken) showCameraFallback(cameraErrorMessage(err));
+        return;
+      }
+      if (token !== cameraScanToken) { // 허용을 기다리는 사이 중지/탭 이동된 경우
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      cameraStream = stream;
+      try { await stream.getVideoTracks()[0]?.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch {}
+      els.scanVideo.srcObject = stream;
+      try { await els.scanVideo.play(); } catch {}
+      cameraScanActive = true;
+      updateCameraButtons(true);
+      els.scanImagePreview.classList.add('hidden');
+      setScanStatus('DataMatrix 바코드를 화면 중앙에 맞춰 주세요. 인식되면 자동으로 반영하고 카메라가 꺼집니다.', 'busy');
+      runCameraDecodeLoop(token);
+    }
+
+    async function runCameraDecodeLoop(token) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const video = els.scanVideo;
+      while (token === cameraScanToken && cameraScanActive) {
+        if (video.readyState >= 2 && video.videoWidth) {
+          const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+          canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+          canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          let result = null;
+          try {
+            result = await decodeWithZXingWasm(ctx.getImageData(0, 0, canvas.width, canvas.height), 'camera');
+            if (!result) result = await detectWithBarcodeDetector(canvas);
+            if (!result) { // 중앙부만 잘라 한 번 더 (작은 코드 대응)
+              const crop = cropCanvas(canvas, 'center');
+              result = await decodeWithZXingWasm(crop.getContext('2d').getImageData(0, 0, crop.width, crop.height), 'camera-center');
+            }
+          } catch {}
+          if (token !== cameraScanToken) return;
+          if (result?.text) { handleCameraResult(result, canvas); return; }
+        }
+        await new Promise(resolve => setTimeout(resolve, 120));
+      }
+    }
+
+    function handleCameraResult(result, canvas) {
+      try {
+        applyScanResult(result.text);
+        try {
+          els.scanImagePreview.src = canvas.toDataURL('image/jpeg', 0.7);
+          els.scanImagePreview.classList.remove('hidden');
+          const thumb = document.createElement('canvas');
+          const thumbScale = Math.min(1, 200 / Math.max(canvas.width, canvas.height));
+          thumb.width = Math.round(canvas.width * thumbScale);
+          thumb.height = Math.round(canvas.height * thumbScale);
+          thumb.getContext('2d').drawImage(canvas, 0, 0, thumb.width, thumb.height);
+          lastScannedLabelImg = thumb.toDataURL('image/jpeg', 0.4);
+        } catch { lastScannedLabelImg = ''; }
+        stopCameraScan(`인식 성공${result.method ? `(${result.method})` : ''}: ${result.text} — 카메라를 종료했습니다.`, 'ok');
+        showToast('바코드를 인식해 입력란에 반영했습니다.');
+      } catch (err) {
+        stopCameraScan(`인식은 됐지만 반영에 실패했습니다: ${err?.message || err}`, 'err');
+      }
     }
 
     async function scanImageFile(file) {
@@ -3898,7 +4044,7 @@
       els.formType.value = '';
       if (els.scanTypeSelect) els.scanTypeSelect.value = '';
       renderScanGuidance('');
-      els.scanStatus.textContent = '카메라로 찍은 사진이나 이미지 파일을 넣으면 인식합니다.';
+      els.scanStatus.textContent = '"카메라로 스캔"으로 바로 인식하거나, 이미지 파일을 불러오세요.';
       els.scanImagePreview.classList.add('hidden');
       els.scanImagePreview.removeAttribute('src');
       els.gs1RawInput.value = '';
@@ -4064,6 +4210,11 @@
     els.viewButtons.forEach(btn => btn.addEventListener('click', () => setView(btn.dataset.view)));
     els.quickAdd.addEventListener('click', () => setView('add'));
     els.cancelEdit.addEventListener('click', () => setView('inventory'));
+    els.scanCameraStart.addEventListener('click', startCameraScan);
+    els.scanCameraStop.addEventListener('click', () => stopCameraScan('카메라를 중지했습니다.'));
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stopCameraScan('화면이 가려져 카메라를 중지했습니다.');
+    });
     els.scanCaptureInput.addEventListener('change', (e) => scanImageFile(e.target.files?.[0]));
     els.scanImageInput.addEventListener('change', (e) => scanImageFile(e.target.files?.[0]));
     els.applyGs1Raw.addEventListener('click', applyGs1RawInput);
