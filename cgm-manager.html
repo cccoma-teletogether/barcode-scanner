@@ -171,6 +171,13 @@
       display: grid; gap: 8px; grid-template-columns: 1.2fr 1fr 1fr auto;
     }
     .toolbar .wide { grid-column: span 2; }
+    /* 재고 목록 툴바: 필터 3개 + 버튼 2개 (PC는 한 줄, 모바일은 필터 한 줄 / 버튼 한 줄) */
+    .toolbar.inv-toolbar { grid-template-columns: 1.2fr 1fr 1fr auto auto; }
+    @media (max-width: 640px) {
+      .toolbar.inv-toolbar { grid-template-columns: repeat(6, 1fr); }
+      .toolbar.inv-toolbar select { grid-column: span 2; }
+      .toolbar.inv-toolbar .btn { grid-column: span 3; white-space: nowrap; }
+    }
     .field, select, input, textarea {
       width: 100%; border: 1px solid var(--line); background: white; color: var(--text);
       border-radius: var(--radius); padding: 10px 12px; outline: none;
@@ -384,7 +391,7 @@
       </section>
 
       <section id="view-inventory" class="panel section hidden">
-        <div class="toolbar" style="margin-bottom: 12px;">
+        <div class="toolbar inv-toolbar" style="margin-bottom: 12px;">
           <select id="filterType"></select>
           <select id="filterStatus">
             <option value="">상태 전체</option>
@@ -400,6 +407,7 @@
             <option value="openedAsc">개봉일 오름차순</option>
             <option value="createdDesc">등록일 최신순</option>
           </select>
+          <button class="btn" id="exportInventoryCsv" title="폐기·종료·사용중을 뺀 미개봉 재고를 CSV로 저장">파일로 저장</button>
           <button class="btn primary" id="quickAdd">+ 재고 추가</button>
         </div>
           <div class="list">
@@ -929,6 +937,7 @@
       customHolidayList: document.getElementById('customHolidayList'),
       saveAlertDays: document.getElementById('saveAlertDays'),
       exportData: document.getElementById('exportData'),
+      exportInventoryCsv: document.getElementById('exportInventoryCsv'),
       importFile: document.getElementById('importFile'),
       chooseBackupDir: document.getElementById('chooseBackupDir'),
       clearBackupDir: document.getElementById('clearBackupDir'),
@@ -4476,14 +4485,16 @@
         exportedAt: new Date().toISOString(),
         ...state
       };
-      const json = JSON.stringify(data, null, 2);
-      const filename = `cgmmgr-backup-${todayISO()}.json`;
+      await saveTextFile(`cgmmgr-backup-${todayISO()}.json`, JSON.stringify(data, null, 2), 'application/json');
+    });
 
+    // 지정한 백업 폴더가 있으면 거기에 저장하고, 없거나 실패하면 브라우저 다운로드로 저장한다
+    async function saveTextFile(filename, text, mime) {
       if (backupDirHandle && await ensureBackupDirPermission()) {
         try {
           const fileHandle = await backupDirHandle.getFileHandle(filename, { create: true });
           const writable = await fileHandle.createWritable();
-          await writable.write(json);
+          await writable.write(text);
           await writable.close();
           showToast(`"${backupDirHandle.name}" 폴더에 저장했습니다.`);
           return;
@@ -4491,14 +4502,43 @@
           showToast('선택한 폴더에 저장하지 못해 기본 다운로드로 저장합니다.', 'err');
         }
       }
-
-      const blob = new Blob([json], { type: 'application/json' });
+      const blob = new Blob([text], { type: mime });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
+    }
+
+    // 재고 목록을 CSV로 저장: 폐기·종료(종료 처리 필요)·사용중 센서는 제외, 현재 필터·정렬 유지
+    function csvCell(v) {
+      const s = String(v ?? '');
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    }
+    function buildInventoryCsvRows() {
+      const typeFilter = els.filterType.value;
+      planStartByInv = new Map(state.plans.map(p => [p.invId, p.startDate]));
+      return state.inventory
+        .map(it => ({ ...it, calc: calc(it) }))
+        .filter(it => !typeFilter || it.typeId === typeFilter)
+        .filter(it => !it.archived && !it.openedAt) // 개봉(사용중·종료)·폐기 제외 = 미개봉 재고만
+        .sort((a, b) => compareItems(a, b, els.sortBy.value))
+        .map(it => [
+          sensorTypeById(it.typeId)?.name || it.typeId,
+          it.serial || '',
+          it.calc.shelfRemaining == null ? '' : it.calc.shelfRemaining,
+          it.expiry || ''
+        ]);
+    }
+    els.exportInventoryCsv.addEventListener('click', async () => {
+      const rows = buildInventoryCsvRows();
+      if (!rows.length) { showToast('저장할 재고가 없습니다. (폐기·종료·사용중 제외)', 'err'); return; }
+      const header = ['센서종류', '일련번호', '사용가능일수', '유효기간'];
+      // 엑셀에서 한글이 깨지지 않도록 UTF-8 BOM을 붙인다
+      const csv = '﻿' + [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+      await saveTextFile(`cgmmgr-inventory-${todayISO()}.csv`, csv, 'text/csv;charset=utf-8');
+      showToast(`재고 ${rows.length}건을 파일로 저장했습니다.`);
     });
 
     els.chooseBackupDir?.addEventListener('click', async () => {
