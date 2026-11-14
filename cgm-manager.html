@@ -396,6 +396,7 @@
           </select>
           <select id="sortBy">
             <option value="effectiveAsc">상태순 (폐기·만료·사용중·임박·미개봉)</option>
+            <option value="planAsc">사용계획순 (폐기·종료·사용중 먼저)</option>
             <option value="openedAsc">개봉일 오름차순</option>
             <option value="createdDesc">등록일 최신순</option>
           </select>
@@ -2953,6 +2954,8 @@
     // 폐기 → 만료 → 사용중 → 유효기간 임박 → 미개봉 순
     const STATUS_SORT_RANK = { archived: 0, expired: 1, in_use: 2, shelf_warning: 3, ready: 4 };
 
+    let planStartByInv = new Map(); // 사용계획순 정렬용: 재고 id → 계획 시작일 (renderInventory에서 갱신)
+
     function compareItems(a, b, sortBy) {
       const ca = a.calc || calc(a);
       const cb = b.calc || calc(b);
@@ -2964,6 +2967,25 @@
       }
       if (sortBy === 'createdDesc') {
         return (b.createdAt || '').localeCompare(a.createdAt || '');
+      }
+      if (sortBy === 'planAsc') {
+        // 사용계획순: 이미 쓴/쓰는 센서(폐기·조기종료, 종료 처리 필요, 사용중)를 먼저 개봉일 순으로,
+        // 그 다음 사용계획 시작일 순, 계획이 없는 재고는 맨 뒤(유효기간 임박순)
+        const done = (it, c) => it.archived ? 0 : (c.status === 'expired' && it.openedAt) ? 1 : (c.status === 'in_use' ? 2 : 3);
+        const ga = done(a, ca), gb = done(b, cb);
+        if (ga !== gb) return ga - gb;
+        if (ga < 3) {
+          const ax = a.openedAt || ca.effective || '9999-12-31';
+          const bx = b.openedAt || cb.effective || '9999-12-31';
+          if (ax !== bx) return ax.localeCompare(bx);
+        } else {
+          const pa = planStartByInv.get(a.id) || '9999-12-31';
+          const pb = planStartByInv.get(b.id) || '9999-12-31';
+          if (pa !== pb) return pa.localeCompare(pb);
+          const ea = ca.effective || '9999-12-31', eb = cb.effective || '9999-12-31';
+          if (ea !== eb) return ea.localeCompare(eb);
+        }
+        return (a.createdAt || '').localeCompare(b.createdAt || '');
       }
       // 기본(상태순): 폐기/만료/사용중/유효기간 임박/미개봉 그룹으로 묶은 뒤 그룹 내에서 시간순 정렬
       const ra = STATUS_SORT_RANK[ca.status] ?? 5;
@@ -2991,6 +3013,7 @@
       const typeFilter = els.filterType.value;
       const statusFilter = els.filterStatus.value;
       const sortBy = els.sortBy.value;
+      planStartByInv = new Map(state.plans.map(p => [p.invId, p.startDate]));
       const list = state.inventory
         .map(it => ({ ...it, calc: calc(it) }))
         .filter(it => !typeFilter || it.typeId === typeFilter)
