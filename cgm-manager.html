@@ -583,8 +583,15 @@
                   <option value="planned">계획(예정)만</option>
                   <option value="in_use">사용중만</option>
                 </select>
-                <button class="btn small danger" type="button" id="planDeleteAllBtn">전체 삭제</button>
+                <div class="stack" style="gap:6px;">
+                  <button class="btn small" type="button" id="exportPlanCsv" title="등록된 사용계획(예정)을 CSV로 저장">파일로 저장</button>
+                  <button class="btn small danger" type="button" id="planDeleteAllBtn">전체 삭제</button>
+                </div>
               </div>
+              <label class="mini" style="display:flex; align-items:center; gap:6px; justify-content:flex-end; margin:-4px 0 10px; cursor:pointer;">
+                <input id="planCsvWithSerial" type="checkbox" style="width:15px; height:15px;" />
+                "파일로 저장" 시 일련번호(S/N) 포함
+              </label>
               <div class="list" id="planList"></div>
             </div>
           </div>
@@ -947,6 +954,8 @@
       exportData: document.getElementById('exportData'),
       exportInventoryCsv: document.getElementById('exportInventoryCsv'),
       csvWithSerial: document.getElementById('csvWithSerial'),
+      exportPlanCsv: document.getElementById('exportPlanCsv'),
+      planCsvWithSerial: document.getElementById('planCsvWithSerial'),
       importFile: document.getElementById('importFile'),
       chooseBackupDir: document.getElementById('chooseBackupDir'),
       clearBackupDir: document.getElementById('clearBackupDir'),
@@ -4599,20 +4608,51 @@
           return row;
         });
     }
+    // 일련번호 포함 옵션: 재고·사용계획 저장 화면의 체크박스가 같은 설정을 공유한다
     const CSV_SERIAL_KEY = 'cgm_csv_with_serial';
-    try { els.csvWithSerial.checked = localStorage.getItem(CSV_SERIAL_KEY) === '1'; } catch {}
-    els.csvWithSerial.addEventListener('change', () => {
-      try { localStorage.setItem(CSV_SERIAL_KEY, els.csvWithSerial.checked ? '1' : '0'); } catch {}
-    });
+    const serialBoxes = [els.csvWithSerial, els.planCsvWithSerial];
+    try { serialBoxes.forEach(b => { b.checked = localStorage.getItem(CSV_SERIAL_KEY) === '1'; }); } catch {}
+    serialBoxes.forEach(box => box.addEventListener('change', () => {
+      serialBoxes.forEach(b => { b.checked = box.checked; });
+      try { localStorage.setItem(CSV_SERIAL_KEY, box.checked ? '1' : '0'); } catch {}
+    }));
+    async function saveCsv(filename, header, rows) {
+      // 엑셀에서 한글이 깨지지 않도록 UTF-8 BOM을 붙인다
+      const csv = '﻿' + [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+      await saveTextFile(filename, csv, 'text/csv;charset=utf-8');
+    }
     els.exportInventoryCsv.addEventListener('click', async () => {
       const withSerial = els.csvWithSerial.checked;
       const rows = buildInventoryCsvRows(withSerial);
       if (!rows.length) { showToast('저장할 재고가 없습니다. (폐기·종료·사용중 제외)', 'err'); return; }
       const header = withSerial ? ['센서종류', '일련번호', '사용일수', '유효기간'] : ['센서종류', '사용일수', '유효기간'];
-      // 엑셀에서 한글이 깨지지 않도록 UTF-8 BOM을 붙인다
-      const csv = '﻿' + [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
-      await saveTextFile(`cgmmgr-inventory-${todayISO()}.csv`, csv, 'text/csv;charset=utf-8');
+      await saveCsv(`cgmmgr-inventory-${todayISO()}.csv`, header, rows);
       showToast(`재고 ${rows.length}건을 파일로 저장했습니다.`);
+    });
+
+    // 사용계획을 CSV로 저장: 등록된 계획(예정)만, 시작일 순. 실제 사용 이력(사용중·폐기)은 제외
+    function buildPlanCsvRows(withSerial) {
+      return state.plans
+        .map(p => ({ p, it: state.inventory.find(x => x.id === p.invId) }))
+        .filter(({ it }) => it)
+        .sort((a, b) => a.p.startDate.localeCompare(b.p.startDate) || (a.it.expiry || '').localeCompare(b.it.expiry || ''))
+        .map(({ p, it }) => {
+          const type = sensorTypeById(p.typeId);
+          const row = [type?.name || p.typeId];
+          if (withSerial) row.push(it.serial || '');
+          row.push(p.startDate, planEndDate(p), type?.wearDays ?? '', it.expiry || '');
+          return row;
+        });
+    }
+    els.exportPlanCsv.addEventListener('click', async () => {
+      const withSerial = els.planCsvWithSerial.checked;
+      const rows = buildPlanCsvRows(withSerial);
+      if (!rows.length) { showToast('저장할 사용계획이 없습니다. (사용중·폐기 이력 제외)', 'err'); return; }
+      const header = withSerial
+        ? ['센서종류', '일련번호', '시작일', '종료일', '사용일수', '유효기간']
+        : ['센서종류', '시작일', '종료일', '사용일수', '유효기간'];
+      await saveCsv(`cgmmgr-plan-${todayISO()}.csv`, header, rows);
+      showToast(`사용계획 ${rows.length}건을 파일로 저장했습니다.`);
     });
 
     els.chooseBackupDir?.addEventListener('click', async () => {
