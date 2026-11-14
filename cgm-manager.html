@@ -533,8 +533,27 @@
                 <strong>자동 계획 제안</strong>
                 <span class="mini" id="planAutoSummary"></span>
               </div>
-              <div class="mini" style="margin-bottom:8px; color:var(--muted);">센서는 한 번에 하나만 착용한다는 전제로, 유효기간이 임박한 순서대로 종류와 무관하게 한 줄로 이어 붙여 제안합니다. 동시 착용이 필요한 예외 상황은 제안 적용 후 개별적으로 추가해주세요. ⚠ 표시는 이 순서대로면 유효기간 규칙상 사용할 수 없는 항목입니다(CareSens Air·Barozen Fit·GS1·Dexcom G7은 유효기간 하루 전까지 시작해야 하고, 그 외 종류는 사용종료일이 유효기간 이내여야 합니다).</div>
-              <label class="mini" style="display:flex; align-items:flex-start; gap:6px; margin-bottom:8px; cursor:pointer;">
+              <div id="planAutoExpiryDesc" class="mini" style="margin-bottom:8px; color:var(--muted);">센서는 한 번에 하나만 착용한다는 전제로, 유효기간이 임박한 순서대로 종류와 무관하게 한 줄로 이어 붙여 제안합니다. 동시 착용이 필요한 예외 상황은 제안 적용 후 개별적으로 추가해주세요. ⚠ 표시는 이 순서대로면 유효기간 규칙상 사용할 수 없는 항목입니다(CareSens Air·Barozen Fit·GS1·Dexcom G7은 유효기간 하루 전까지 시작해야 하고, 그 외 종류는 사용종료일이 유효기간 이내여야 합니다).</div>
+              <label class="mini" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                배치 방식
+                <select id="planAutoMode" style="width:auto; font-size:12px; padding:6px 8px;">
+                  <option value="expiry">유효기간 순 (기본)</option>
+                  <option value="loss">손실 최소화 — 옵션 1·2·3 비교</option>
+                </select>
+              </label>
+              <div id="planAutoLossControls" style="display:none; margin-bottom:8px;">
+                <div class="stack" style="gap:10px; align-items:center; margin-bottom:6px;">
+                  <label class="mini" style="display:flex; align-items:center; gap:6px;">시작일
+                    <input id="planAutoStart" type="date" style="width:auto; font-size:12px; padding:6px 8px;" />
+                  </label>
+                  <label class="mini" style="display:flex; align-items:center; gap:6px;">옵션 2·3의 대상 종류
+                    <select id="planAutoTarget" style="width:auto; font-size:12px; padding:6px 8px;"></select>
+                  </label>
+                </div>
+                <div class="mini" style="color:var(--muted); margin-bottom:8px;">등록된 계획은 무시하고 미개봉 재고 전부를 시작일부터 공백 없이 다시 배치합니다. 유효기간 규칙을 못 지키는 센서는 일정에서 빼고(손실) 손실 개수를 최소화합니다. ① 순수 손실 최소화 ② 대상 종류를 자기 유효기간 안에서 최대한 뒤로(②′는 대상 종류 손실 허용) ③ 대상 종류를 뺀 나머지는 모두 보장하고 대상 종류가 손실 전담. 옵션을 골라 일정을 확인한 뒤 적용하세요.</div>
+                <div id="planAutoCompare" style="overflow-x:auto;"></div>
+              </div>
+              <label id="planAutoIncludeLabel" class="mini" style="display:flex; align-items:flex-start; gap:6px; margin-bottom:8px; cursor:pointer;">
                 <input id="planAutoIncludePlanned" type="checkbox" style="width:15px; height:15px; flex-shrink:0; margin-top:1px;" />
                 <span>이미 계획이 있는 재고도 포함해 전체를 다시 배치 — 사용중 센서 종료일 이후부터 시작하며, 유효기간 안에서 GS1을 가장 낮은 우선순위로 둡니다. 적용하면 기존 계획의 시작일이 바뀝니다.</span>
               </label>
@@ -995,6 +1014,12 @@
       planAutoSummary: document.getElementById('planAutoSummary'),
       planAutoList: document.getElementById('planAutoList'),
       planAutoIncludePlanned: document.getElementById('planAutoIncludePlanned'),
+      planAutoMode: document.getElementById('planAutoMode'),
+      planAutoLossControls: document.getElementById('planAutoLossControls'),
+      planAutoStart: document.getElementById('planAutoStart'),
+      planAutoTarget: document.getElementById('planAutoTarget'),
+      planAutoCompare: document.getElementById('planAutoCompare'),
+      planAutoIncludeLabel: document.getElementById('planAutoIncludeLabel'),
       planAutoCloseBtn: document.getElementById('planAutoCloseBtn'),
       planAutoApplyBtn: document.getElementById('planAutoApplyBtn'),
       planFormPanel: document.getElementById('planFormPanel'),
@@ -1040,6 +1065,9 @@
     let planEditingPlanId = null; // 수정 중인 계획 id
     let planListSelectedId = null; // 달력 클릭으로 선택된 계획 id
     let planAutoProposals = [];   // 자동 계획 제안 결과
+    let planAutoLost = [];        // 손실 최소화 방식에서 일정에서 빠진(손실) 재고
+    let planAutoLossResult = null; // 손실 최소화 방식의 옵션별 계산 결과
+    let planAutoLossKey = '1';    // 손실 최소화 방식에서 선택한 옵션
     let dashTypeFilter = null;    // 대시보드 우선 사용 대상 센서 종류 필터
     let lastScannedLabelImg = ''; // 마지막 스캔 썸네일 base64
     const _calcCache = new Map(); // calc() 렌더 사이클 캐시
@@ -3384,14 +3412,197 @@
       return result;
     }
 
+    // ── 손실 최소화 배치 ──────────────────────────────────────────────────
+    // 미개봉 재고 전부를 시작일부터 공백 없이 이어 배치한다. 종류별 마지막 시작일(latestStartForExpiry)을 못 지키는
+    // 센서는 손실로 일정에서 빼고, 손실 개수가 최소가 되도록 Moore-Hodgson 방식으로 고른다.
+    // 옵션 ① 순수 최소화 ② 대상 종류를 자기 유효기간 안에서 최대한 뒤로(②′는 대상 종류 손실 허용) ③ 대상 종류가 손실 전담
+    function computeLossOptions(startDate, targetTypeId) {
+      const typeIdx = id => { const i = state.sensorTypes.findIndex(t => t.id === id); return i < 0 ? 999 : i; };
+      const jobs = state.inventory
+        .filter(it => !it.openedAt && !it.archived && sensorTypeById(it.typeId))
+        .map(it => {
+          const lastIso = latestStartForExpiry(it.typeId, it.expiry);
+          return { it, typeId: it.typeId, p: sensorTypeById(it.typeId).wearDays || 0, lastIso, last: daysBetween(startDate, lastIso) };
+        })
+        .filter(j => j.p > 0 && j.last != null);
+      const dl = j => j.last + j.p; // 보정 마감 (시작일 기준 제약을 종료일 기준 문제로 바꾼 값)
+      const tie = (a, b) => typeIdx(a.typeId) - typeIdx(b.typeId) || (a.it.serial || '').localeCompare(b.it.serial || '')
+        || (a.it.createdAt || '').localeCompare(b.it.createdAt || '') || a.it.id.localeCompare(b.it.id);
+      const edf = list => [...list].sort((a, b) => dl(a) - dl(b) || a.last - b.last || tie(a, b));
+      const onTime = seq => { let c = 0; for (const j of seq) { if (c > j.last) return false; c += j.p; } return true; };
+      // protect가 참인 센서는 제외하지 않는다. 그래도 못 맞추면(보호 대상끼리 불가능) null
+      const moore = (list, protect = () => false) => {
+        const kept = [], lost = []; let C = 0;
+        for (const j of edf(list)) {
+          kept.push(j); C += j.p;
+          if (C > dl(j)) {
+            const cand = kept.filter(x => !protect(x));
+            if (!cand.length) return null;
+            const mx = Math.max(...cand.map(x => x.p));
+            const rm = cand.filter(x => x.p === mx).sort((a, b) => dl(b) - dl(a) || tie(b, a))[0];
+            kept.splice(kept.indexOf(rm), 1); C -= rm.p; lost.push(rm);
+          }
+        }
+        return { kept, lost };
+      };
+      const finalize = (key, label, seq, lost, note = '') => {
+        let c = 0;
+        const sched = seq.map(j => { const s = c; c += j.p; return { j, start: addDays(startDate, s), end: addDays(startDate, c), margin: j.last - s }; });
+        return { key, label, applicable: true, note, sched, lost, usable: seq.length, endDate: addDays(startDate, c) };
+      };
+      const na = (key, label, reason) => ({ key, label, applicable: false, reason, sched: [], lost: [], usable: 0, endDate: '' });
+      const isT = j => j.typeId === targetTypeId;
+      const hasTarget = jobs.some(isT);
+      const targetName = sensorTypeById(targetTypeId)?.name || '대상 종류';
+      const options = [];
+
+      // ① 순수 손실 최소화
+      const m1 = moore(jobs);
+      options.push(finalize('1', '① 순수 손실 최소화', m1.kept, m1.lost));
+
+      // ② 대상 종류를 자기 유효기간 안에서 최대한 뒤로: 대상은 손실시키지 않는 범위에서 손실 최소화 후, 대상을 뒤쪽에 배치
+      if (!hasTarget) options.push(na('2', `② ${targetName} 후순위`, '대상 종류의 미개봉 재고가 없습니다.'));
+      else {
+        const m2 = moore(jobs, isT);
+        if (!m2) options.push(na('2', `② ${targetName} 후순위 (대상 보호)`, `${targetName}을(를) 모두 유효기간 안에 쓰는 배치가 불가능합니다.`));
+        else {
+          const total = m2.kept.reduce((s, j) => s + j.p, 0);
+          let remaining = [...m2.kept], tail = [], t = total, ok = true;
+          while (remaining.length) {
+            const cands = [...remaining].sort((a, b) => (Number(isT(b)) - Number(isT(a))) || (b.last - a.last) || tie(b, a));
+            const chosen = cands.find(c => t - c.p <= c.last && onTime(edf(remaining.filter(x => x !== c))));
+            if (!chosen) { ok = false; break; }
+            tail.unshift(chosen); remaining = remaining.filter(x => x !== chosen); t -= chosen.p;
+          }
+          options.push(finalize('2', `② ${targetName} 후순위 (대상 보호)`, ok ? tail : edf(m2.kept), m2.lost,
+            `${targetName}은(는) 자기 유효기간 안에서 가능한 한 뒤쪽에 배치`));
+        }
+        // ②′ 대상 종류를 맨 뒤에 두고, 유효기간을 넘기면 대상 종류가 손실
+        const others = moore(jobs.filter(j => !isT(j)));
+        const seq = edf(others.kept); let cur = seq.reduce((s, j) => s + j.p, 0); const lostT = [];
+        [...jobs.filter(isT)].sort((a, b) => a.last - b.last || tie(a, b)).forEach(j => { if (cur <= j.last) { seq.push(j); cur += j.p; } else lostT.push(j); });
+        options.push(finalize('2b', `②′ ${targetName} 후순위 (대상 손실 허용)`, seq, [...others.lost, ...lostT],
+          `${targetName}을(를) 맨 뒤에 두고 유효기간을 넘기면 손실`));
+      }
+
+      // ③ 대상 종류를 뺀 나머지는 100% 보장, 대상 종류가 손실 전담
+      if (!hasTarget) options.push(na('3', `③ ${targetName} 손실 전담`, '대상 종류의 미개봉 재고가 없습니다.'));
+      else {
+        let seq = edf(jobs.filter(j => !isT(j)));
+        if (!onTime(seq)) options.push(na('3', `③ ${targetName} 손실 전담`, `${targetName}을(를) 뺀 나머지만으로도 손실 없이 배치할 수 없습니다.`));
+        else {
+          const lostT = [];
+          [...jobs.filter(isT)].sort((a, b) => a.last - b.last || tie(a, b)).forEach(j => {
+            for (let pos = 0; pos <= seq.length; pos++) {
+              const trial = [...seq.slice(0, pos), j, ...seq.slice(pos)];
+              if (onTime(trial)) { seq = trial; return; }
+            }
+            lostT.push(j);
+          });
+          options.push(finalize('3', `③ ${targetName} 손실 전담`, seq, lostT, `${targetName}을(를) 제외한 종류는 모두 사용`));
+        }
+      }
+      return { startDate, targetTypeId, total: jobs.length, options };
+    }
+
+    function lossSummaryText(lost) {
+      if (!lost.length) return '없음';
+      const g = {};
+      lost.forEach(j => { const k = `${sensorTypeById(j.typeId)?.name || j.typeId}(유효 ${(j.it.expiry || '').slice(5)})`; g[k] = (g[k] || 0) + 1; });
+      return Object.entries(g).map(([k, n]) => `${k} ${n}개`).join(', ');
+    }
+
+    function renderLossCompare() {
+      const r = planAutoLossResult;
+      if (!r) { els.planAutoCompare.innerHTML = ''; return; }
+      if (!r.total) { els.planAutoCompare.innerHTML = '<div class="mini">배치할 미개봉 재고가 없습니다.</div>'; return; }
+      els.planAutoCompare.innerHTML = `
+        <table style="width:100%; min-width:430px; border-collapse:collapse; font-size:12px;">
+          <thead><tr style="text-align:left; color:var(--muted);"><th style="padding:4px 6px;">옵션</th><th style="padding:4px 6px;">손실</th><th style="padding:4px 6px;">손실 항목</th><th style="padding:4px 6px;">마지막 종료일</th><th></th></tr></thead>
+          <tbody>${r.options.map(o => `
+            <tr style="border-top:1px solid var(--line); ${o.key === planAutoLossKey ? 'background:#eff6ff;' : ''}">
+              <td style="padding:6px;">${escapeHtml(o.label)}</td>
+              ${o.applicable
+                ? `<td style="padding:6px; white-space:nowrap;"><strong>${o.lost.length}개</strong> <span class="mini">(사용 ${o.usable})</span></td>
+                   <td style="padding:6px;">${escapeHtml(lossSummaryText(o.lost))}</td>
+                   <td style="padding:6px; white-space:nowrap;">${o.endDate}</td>`
+                : `<td colspan="3" style="padding:6px; color:var(--muted);">적용 불가 — ${escapeHtml(o.reason)}</td>`}
+              <td style="padding:6px;"><button type="button" class="btn small" style="white-space:nowrap;" data-loss-key="${o.key}" ${o.applicable ? '' : 'disabled'}>${o.key === planAutoLossKey ? '선택됨' : '일정 보기'}</button></td>
+            </tr>`).join('')}</tbody>
+        </table>`;
+    }
+
+    function selectLossOption(key) {
+      const r = planAutoLossResult;
+      if (!r) return;
+      planAutoLossKey = key;
+      const opt = r.options.find(o => o.key === key) || r.options[0];
+      const planned = new Map(state.plans.map(p => [p.invId, p]));
+      planAutoProposals = opt.applicable ? opt.sched.map(s => {
+        const type = sensorTypeById(s.j.typeId), ex = planned.get(s.j.it.id);
+        return { invId: s.j.it.id, typeId: s.j.typeId, typeName: type?.name || s.j.typeId, serial: s.j.it.serial, lot: s.j.it.lot,
+          expiry: s.j.it.expiry, startDate: s.start, endDate: s.end, planId: ex?.id || null, prevStart: ex?.startDate || null,
+          warning: false, margin: s.margin };
+      }) : [];
+      planAutoLost = opt.applicable ? opt.lost.map(j => ({
+        invId: j.it.id, typeName: sensorTypeById(j.typeId)?.name || j.typeId, serial: j.it.serial, expiry: j.it.expiry,
+        lastIso: j.lastIso, pastStart: j.last < 0, planId: planned.get(j.it.id)?.id || null
+      })) : [];
+      renderLossCompare();
+      renderAutoPlanList();
+    }
+
+    function refreshLossMode() {
+      const start = els.planAutoStart.value;
+      if (!start) { planAutoLossResult = null; planAutoProposals = []; planAutoLost = []; renderLossCompare(); renderAutoPlanList(); return; }
+      planAutoLossResult = computeLossOptions(start, els.planAutoTarget.value);
+      selectLossOption('1');
+    }
+
+    function defaultLossStart() {
+      const busy = latestBusyEnd(false); // 등록 계획은 다시 배치하므로 무시하고, 사용중 센서 종료일 이후부터
+      return busy && busy > todayISO() ? busy : todayISO();
+    }
+
+    function applyAutoMode() {
+      const loss = els.planAutoMode.value === 'loss';
+      els.planAutoLossControls.style.display = loss ? '' : 'none';
+      els.planAutoIncludeLabel.style.display = loss ? 'none' : 'flex';
+      document.getElementById('planAutoExpiryDesc').style.display = loss ? 'none' : '';
+      if (loss) {
+        if (!els.planAutoStart.value) els.planAutoStart.value = defaultLossStart();
+        if (!els.planAutoTarget.options.length) {
+          els.planAutoTarget.innerHTML = state.sensorTypes.map(t => `<option value="${escapeAttr(t.id)}">${escapeHtml(t.name)}</option>`).join('');
+          els.planAutoTarget.value = state.sensorTypes.some(t => t.id === 'gs1') ? 'gs1' : (state.sensorTypes[0]?.id || '');
+        }
+        refreshLossMode();
+      } else {
+        planAutoLost = [];
+        planAutoProposals = buildAutoPlanProposals(els.planAutoIncludePlanned.checked);
+        renderAutoPlanList();
+      }
+    }
+
     function renderAutoPlanList() {
-      if (!planAutoProposals.length) {
+      const lossMode = els.planAutoMode.value === 'loss';
+      const lostHtml = lossMode && planAutoLost.length ? `
+        <div class="mini" style="margin:8px 0 4px; color:var(--red); font-weight:700;">손실 ${planAutoLost.length}건 — 유효기간 규칙상 일정에 넣을 수 없어 뺀 재고</div>
+        ${planAutoLost.map(l => `
+          <div class="item" style="border-left:4px solid var(--red); background:#fef2f2;">
+            <div class="name">${escapeHtml(l.typeName)}${l.serial ? ` · S/N ${escapeHtml(l.serial)}` : ''}</div>
+            <div class="meta">유효기간 ${fmtDate(l.expiry) || '-'} · 시작 가능한 마지막 날 ${l.lastIso}${l.pastStart ? ' (시작일 이전)' : ''}을(를) 지켜 배치할 수 없음</div>
+            ${l.planId ? '<div class="meta" style="color:var(--red);">기존 계획이 있으면 적용 시 삭제됩니다.</div>' : ''}
+          </div>`).join('')}` : '';
+      if (!planAutoProposals.length && !lostHtml) {
         els.planAutoList.innerHTML = '<div class="mini">제안할 미개봉 재고가 없습니다.</div>';
         els.planAutoSummary.textContent = '';
         return;
       }
       const warnCount = planAutoProposals.filter(p => p.warning).length;
-      els.planAutoSummary.textContent = `${planAutoProposals.length}건${warnCount ? ` · ⚠ ${warnCount}건 확인 필요` : ''}`;
+      const lastEnd = planAutoProposals.length ? planAutoProposals[planAutoProposals.length - 1].endDate : '';
+      els.planAutoSummary.textContent = lossMode
+        ? `사용 ${planAutoProposals.length}건 · 손실 ${planAutoLost.length}건${lastEnd ? ` · 마지막 종료 ${lastEnd}` : ''}`
+        : `${planAutoProposals.length}건${warnCount ? ` · ⚠ ${warnCount}건 확인 필요` : ''}`;
       els.planAutoList.innerHTML = planAutoProposals.map((p, idx) => {
         const type = sensorTypeById(p.typeId);
         const color = sensorTypeColor(type);
@@ -3400,12 +3611,12 @@
             <input type="checkbox" data-auto-idx="${idx}" ${p.warning ? '' : 'checked'} style="width:16px; height:16px; flex-shrink:0;" />
             <div style="flex:1;">
               <div class="name">${escapeHtml(p.typeName)}${p.serial ? ` · S/N ${escapeHtml(p.serial)}` : ''}</div>
-              <div class="meta">${p.startDate} ~ ${p.endDate} (유효기간 ${fmtDate(p.expiry) || '-'})</div>
+              <div class="meta">${p.startDate} ~ ${p.endDate} (유효기간 ${fmtDate(p.expiry) || '-'})${p.margin != null ? ` · 여유 ${p.margin}일` : ''}</div>
               ${p.planId ? `<div class="meta" style="color:var(--primary);">기존 계획 ${p.prevStart}${p.prevStart === p.startDate ? ' (변경 없음)' : ` → ${p.startDate}`}</div>` : ''}
               ${p.warning ? `<div class="meta" style="color:var(--red);">⚠ 이 순서대로면 유효기간 규칙상 사용할 수 없습니다(${EXPIRY_GRACE_TYPE_IDS.has(p.typeId) ? '유효기간 하루 전까지 시작해야 함' : '사용종료일이 유효기간을 넘음'}). 시작일을 직접 조정해주세요.</div>` : ''}
             </div>
           </label>`;
-      }).join('');
+      }).join('') + lostHtml;
     }
 
     // 계획 추가 폼, 시작일 수정, 자동 제안 패널은 한 번에 하나만 열려 있도록 자신을 뺀 나머지를 닫는다
@@ -3418,19 +3629,27 @@
     function openAutoPlanPanel() {
       closePlanPanelsExcept('auto');
       els.planAutoIncludePlanned.checked = false;
-      planAutoProposals = buildAutoPlanProposals(false);
-      renderAutoPlanList();
+      els.planAutoMode.value = 'expiry';
+      els.planAutoStart.value = '';        // 손실 최소화 방식을 고를 때 기본 시작일을 다시 채운다
+      els.planAutoTarget.innerHTML = '';   // 센서 종류가 바뀌었을 수 있으니 다시 채운다
+      applyAutoMode();
       els.planAutoPanel.style.display = '';
     }
 
-    els.planAutoIncludePlanned.addEventListener('change', () => {
-      planAutoProposals = buildAutoPlanProposals(els.planAutoIncludePlanned.checked);
-      renderAutoPlanList();
+    els.planAutoIncludePlanned.addEventListener('change', applyAutoMode);
+    els.planAutoMode.addEventListener('change', applyAutoMode);
+    els.planAutoStart.addEventListener('change', refreshLossMode);
+    els.planAutoTarget.addEventListener('change', refreshLossMode);
+    els.planAutoCompare.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-loss-key]');
+      if (btn && !btn.disabled) selectLossOption(btn.dataset.lossKey);
     });
 
     function closeAutoPlanPanel() {
       els.planAutoPanel.style.display = 'none';
       planAutoProposals = [];
+      planAutoLost = [];
+      planAutoLossResult = null;
     }
 
     // 개봉한 적이 있는 모든 재고를 가상 plan 형태로 반환 (id는 'inuse_<invId>')
@@ -3795,7 +4014,9 @@
         return;
       }
       const changing = checked.filter(p => p.planId && p.prevStart !== p.startDate).length;
-      if (changing && !confirm(`기존 계획 ${changing}건의 시작일이 바뀝니다. 계속할까요?`)) return;
+      // 손실 최소화 방식: 손실로 빠진 재고에 이미 계획이 있으면 함께 삭제한다
+      const lostPlanIds = els.planAutoMode.value === 'loss' ? planAutoLost.filter(l => l.planId).map(l => l.planId) : [];
+      if ((changing || lostPlanIds.length) && !confirm(`${changing ? `기존 계획 ${changing}건의 시작일이 바뀝니다.` : ''}${lostPlanIds.length ? `\n손실로 빠지는 재고의 기존 계획 ${lostPlanIds.length}건이 삭제됩니다.` : ''}\n계속할까요?`.trim())) return;
       const lateChecked = checked.filter(p => p.warning);
       if (lateChecked.length && !confirm(`⚠ 유효기간 규칙상 사용할 수 없는 항목 ${lateChecked.length}건이 선택되어 있습니다.\n${lateChecked.slice(0, 5).map(p => `· ${p.typeName}${p.serial ? ` (S/N ${p.serial})` : ''} 유효기간 ${p.expiry}, 시작 ${p.startDate}`).join('\n')}\n\n그래도 계획에 추가할까요?`)) return;
       let added = 0, moved = 0;
@@ -3814,10 +4035,11 @@
         });
         added++;
       });
+      if (lostPlanIds.length) state.plans = state.plans.filter(p => !lostPlanIds.includes(p.id));
       saveState();
       closeAutoPlanPanel();
       rerender();
-      showToast(`계획 ${added}건 추가${moved ? `, ${moved}건 시작일 변경` : ''}했습니다.`);
+      showToast(`계획 ${added}건 추가${moved ? `, ${moved}건 시작일 변경` : ''}${lostPlanIds.length ? `, 손실 재고의 계획 ${lostPlanIds.length}건 삭제` : ''}했습니다.`);
     });
 
     els.planStartDate.addEventListener('input', checkPlanOverlapUI);
