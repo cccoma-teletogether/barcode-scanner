@@ -3252,6 +3252,17 @@
       return true;
     }
 
+    // 미개봉 재고의 사용 우선순위: 유효기간이 빠른 순, 같은 유효기간이면 같은 종류끼리 묶어서
+    // (센서 종류 관리의 종류 순서 → 일련번호 → 등록일 순) 종류가 섞이지 않게 한다
+    function comparePlanPriority(a, b) {
+      const ea = a.expiry || '9999-12-31', eb = b.expiry || '9999-12-31';
+      if (ea !== eb) return ea.localeCompare(eb);
+      const ta = state.sensorTypes.findIndex(t => t.id === a.typeId);
+      const tb = state.sensorTypes.findIndex(t => t.id === b.typeId);
+      if (ta !== tb) return (ta < 0 ? Infinity : ta) - (tb < 0 ? Infinity : tb) || (a.typeId || '').localeCompare(b.typeId || '');
+      return (a.serial || '').localeCompare(b.serial || '') || (a.createdAt || '').localeCompare(b.createdAt || '');
+    }
+
     function renderPlanSensorList() {
       const ready = state.inventory
         .filter(it => {
@@ -3260,11 +3271,7 @@
           return c.status === 'ready' || c.status === 'shelf_warning';
         })
         .map(it => ({ ...it, _calc: calc(it) }))
-        .sort((a, b) => {
-          const ar = a._calc.shelfRemaining ?? Infinity;
-          const br = b._calc.shelfRemaining ?? Infinity;
-          return ar - br;
-        });
+        .sort(comparePlanPriority);
       if (!ready.length) {
         els.planSensorList.innerHTML = '<div class="mini">미개봉 재고가 없습니다.</div>';
         return;
@@ -3315,7 +3322,7 @@
       const startCursor = busyEnd && busyEnd > today ? busyEnd : today;
       const ordered = includePlanned
         ? orderWithLowPriorityGs1(candidates, startCursor)
-        : candidates.sort((a, b) => (a.expiry || '9999-12-31').localeCompare(b.expiry || '9999-12-31'));
+        : candidates.sort(comparePlanPriority);
 
       let cursor = startCursor;
       return ordered.map(item => {
@@ -3344,8 +3351,7 @@
     // 미루지 않는다(유효기간 안에 시작하지 못하는 센서가 늘어나지 않는 범위에서만 우선순위를 낮춤).
     function orderWithLowPriorityGs1(items, startDate) {
       const dur = it => sensorTypeById(it.typeId)?.wearDays || 0;
-      const expiryOf = it => it.expiry || '9999-12-31';
-      const pref = (a, b) => ((a.typeId === 'gs1') - (b.typeId === 'gs1')) || expiryOf(a).localeCompare(expiryOf(b));
+      const pref = (a, b) => ((a.typeId === 'gs1') - (b.typeId === 'gs1')) || comparePlanPriority(a, b);
       // 종류별로 시작할 수 있는 가장 늦은 날(latestStartForExpiry)이 있으므로, 그 날+사용일수(완료 기한) 순이 위반을 가장 적게 만든다
       const lastStart = it => latestStartForExpiry(it.typeId, it.expiry);
       const edf = (a, b) => addDays(lastStart(a), dur(a)).localeCompare(addDays(lastStart(b), dur(b)));
