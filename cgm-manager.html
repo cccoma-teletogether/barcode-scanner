@@ -528,7 +528,7 @@
                 <strong>자동 계획 제안</strong>
                 <span class="mini" id="planAutoSummary"></span>
               </div>
-              <div class="mini" style="margin-bottom:8px; color:var(--muted);">센서는 한 번에 하나만 착용한다는 전제로, 유효기간이 임박한 순서대로 종류와 무관하게 한 줄로 이어 붙여 제안합니다. 동시 착용이 필요한 예외 상황은 제안 적용 후 개별적으로 추가해주세요. ⚠ 표시는 이 순서대로면 유효기간이 지난 뒤 시작하게 되어 사용할 수 없는 항목입니다.</div>
+              <div class="mini" style="margin-bottom:8px; color:var(--muted);">센서는 한 번에 하나만 착용한다는 전제로, 유효기간이 임박한 순서대로 종류와 무관하게 한 줄로 이어 붙여 제안합니다. 동시 착용이 필요한 예외 상황은 제안 적용 후 개별적으로 추가해주세요. ⚠ 표시는 이 순서대로면 유효기간 규칙상 사용할 수 없는 항목입니다(CareSens Air·Barozen Fit·GS1·Dexcom G7은 유효기간 하루 전까지 시작해야 하고, 그 외 종류는 사용종료일이 유효기간 이내여야 합니다).</div>
               <label class="mini" style="display:flex; align-items:flex-start; gap:6px; margin-bottom:8px; cursor:pointer;">
                 <input id="planAutoIncludePlanned" type="checkbox" style="width:15px; height:15px; flex-shrink:0; margin-top:1px;" />
                 <span>이미 계획이 있는 재고도 포함해 전체를 다시 배치 — 사용중 센서 종료일 이후부터 시작하며, 유효기간 안에서 GS1을 가장 낮은 우선순위로 둡니다. 적용하면 기존 계획의 시작일이 바뀝니다.</span>
@@ -1290,9 +1290,16 @@
       return state.sensorTypes.find(t => t.id === id) || DEFAULT_SENSOR_TYPE_MAP[id] || null;
     }
     // 유효기간 하루 전까지 개봉하면 유효기간이 지나도 사용종료일까지 사용 가능한 센서
-    const EXPIRY_GRACE_TYPE_IDS = new Set(['caresens_air', 'barogen_fit', 'gs1']);
+    const EXPIRY_GRACE_TYPE_IDS = new Set(['caresens_air', 'barogen_fit', 'gs1', 'dexcom_g7']);
     function expiryGraceApplies(typeId, startDate, expiry) {
       return EXPIRY_GRACE_TYPE_IDS.has(typeId) && !!startDate && !!expiry && startDate < expiry;
+    }
+    // 종류별 유효기간 규칙에 따라 이 날짜에 시작해도 되는 가장 늦은 날.
+    // 유예 대상: 유효기간 하루 전까지 시작하면 이후에도 사용종료일까지 사용 가능 / 그 외: 사용종료일이 유효기간 이내여야 함
+    function latestStartForExpiry(typeId, expiry) {
+      if (!expiry) return '9999-12-31';
+      if (EXPIRY_GRACE_TYPE_IDS.has(typeId)) return addDays(expiry, -1);
+      return addDays(expiry, -(sensorTypeById(typeId)?.wearDays || 0));
     }
     // 센서 오류로 인한 조기 만료 등, 지나간 날짜로 처리해야 할 때 날짜를 직접 입력받는다
     function promptForDate(message, defaultValue) {
@@ -3306,7 +3313,6 @@
         const type = sensorTypeById(item.typeId);
         const startDate = cursor;
         const endDate = addDays(startDate, type.wearDays);
-        const grace = expiryGraceApplies(item.typeId, startDate, item.expiry);
         const existing = plannedByInv.get(item.id);
         cursor = endDate;
         return {
@@ -3320,7 +3326,7 @@
           endDate,
           planId: existing?.id || null,
           prevStart: existing?.startDate || null,
-          warning: !!item.expiry && startDate > item.expiry && !grace
+          warning: startDate > latestStartForExpiry(item.typeId, item.expiry)
         };
       });
     }
@@ -3331,11 +3337,13 @@
       const dur = it => sensorTypeById(it.typeId)?.wearDays || 0;
       const expiryOf = it => it.expiry || '9999-12-31';
       const pref = (a, b) => ((a.typeId === 'gs1') - (b.typeId === 'gs1')) || expiryOf(a).localeCompare(expiryOf(b));
-      // 시작일이 유효기간을 넘지 않아야 하므로 완료 기한(유효기간+사용일수) 순이 시작 위반을 가장 적게 만든다
-      const edf = (a, b) => addDays(expiryOf(a), dur(a)).localeCompare(addDays(expiryOf(b), dur(b)));
+      // 종류별로 시작할 수 있는 가장 늦은 날(latestStartForExpiry)이 있으므로, 그 날+사용일수(완료 기한) 순이 위반을 가장 적게 만든다
+      const lastStart = it => latestStartForExpiry(it.typeId, it.expiry);
+      const edf = (a, b) => addDays(lastStart(a), dur(a)).localeCompare(addDays(lastStart(b), dur(b)));
+      const late = (it, start) => start > lastStart(it);
       const violations = (list, from) => {
         let cur = from, count = 0;
-        [...list].sort(edf).forEach(it => { if (it.expiry && cur > it.expiry) count++; cur = addDays(cur, dur(it)); });
+        [...list].sort(edf).forEach(it => { if (late(it, cur)) count++; cur = addDays(cur, dur(it)); });
         return count;
       };
       const result = [];
@@ -3345,7 +3353,7 @@
         const baseline = violations(rest, cursor);
         let pick = rest.find(c => {
           const others = rest.filter(x => x !== c);
-          const own = c.expiry && cursor > c.expiry ? 1 : 0;
+          const own = late(c, cursor) ? 1 : 0;
           return own + violations(others, addDays(cursor, dur(c))) <= baseline;
         });
         if (!pick) pick = [...rest].sort(edf)[0];
@@ -3374,7 +3382,7 @@
               <div class="name">${escapeHtml(p.typeName)}${p.serial ? ` · S/N ${escapeHtml(p.serial)}` : ''}</div>
               <div class="meta">${p.startDate} ~ ${p.endDate} (유효기간 ${fmtDate(p.expiry) || '-'})</div>
               ${p.planId ? `<div class="meta" style="color:var(--primary);">기존 계획 ${p.prevStart}${p.prevStart === p.startDate ? ' (변경 없음)' : ` → ${p.startDate}`}</div>` : ''}
-              ${p.warning ? `<div class="meta" style="color:var(--red);">⚠ 이 순서대로면 유효기간이 지난 뒤 시작하게 되어 사용할 수 없습니다. 시작일을 직접 조정해주세요.</div>` : ''}
+              ${p.warning ? `<div class="meta" style="color:var(--red);">⚠ 이 순서대로면 유효기간 규칙상 사용할 수 없습니다(${EXPIRY_GRACE_TYPE_IDS.has(p.typeId) ? '유효기간 하루 전까지 시작해야 함' : '사용종료일이 유효기간을 넘음'}). 시작일을 직접 조정해주세요.</div>` : ''}
             </div>
           </label>`;
       }).join('');
