@@ -529,6 +529,10 @@
                 <span class="mini" id="planAutoSummary"></span>
               </div>
               <div class="mini" style="margin-bottom:8px; color:var(--muted);">센서는 한 번에 하나만 착용한다는 전제로, 유효기간이 임박한 순서대로 종류와 무관하게 한 줄로 이어 붙여 제안합니다. 동시 착용이 필요한 예외 상황은 제안 적용 후 개별적으로 추가해주세요. ⚠ 표시는 이 순서대로면 유효기간이 지난 뒤 시작하게 되어 사용할 수 없는 항목입니다.</div>
+              <label class="mini" style="display:flex; align-items:flex-start; gap:6px; margin-bottom:8px; cursor:pointer;">
+                <input id="planAutoIncludePlanned" type="checkbox" style="width:15px; height:15px; flex-shrink:0; margin-top:1px;" />
+                <span>이미 계획이 있는 재고도 포함해 전체를 다시 배치 — 사용중 센서 종료일 이후부터 시작하며, 유효기간 안에서 GS1을 가장 낮은 우선순위로 둡니다. 적용하면 기존 계획의 시작일이 바뀝니다.</span>
+              </label>
               <div id="planAutoList" class="list" style="margin-bottom:10px;"></div>
               <div class="form-actions">
                 <button class="btn" type="button" id="planAutoCloseBtn">닫기</button>
@@ -976,6 +980,7 @@
       planAutoPanel: document.getElementById('planAutoPanel'),
       planAutoSummary: document.getElementById('planAutoSummary'),
       planAutoList: document.getElementById('planAutoList'),
+      planAutoIncludePlanned: document.getElementById('planAutoIncludePlanned'),
       planAutoCloseBtn: document.getElementById('planAutoCloseBtn'),
       planAutoApplyBtn: document.getElementById('planAutoApplyBtn'),
       planFormPanel: document.getElementById('planFormPanel'),
@@ -3280,25 +3285,31 @@
     // ── 자동 계획 제안 ────────────────────────────────────────────────────
     // 센서는 한 번에 하나만 부착한다는 전제로, 미개봉 재고 전체를 유효기간 임박 순으로
     // 종류와 무관하게 하나의 줄로 이어 붙여 시작일을 제안한다 (suggestPlanStartDate와 동일한 규칙).
-    function buildAutoPlanProposals() {
-      const plannedIds = new Set(state.plans.map(p => p.invId));
+    // includePlanned가 true면 이미 계획이 있는 재고도 함께 전체를 다시 배치한다(등록된 계획은 무시하고
+    // 사용중 센서 종료일 이후부터 시작). 이때는 유효기간 내에서 GS1을 가장 낮은 우선순위로 둔다.
+    function buildAutoPlanProposals(includePlanned = false) {
+      const plannedByInv = new Map(state.plans.map(p => [p.invId, p]));
       const candidates = state.inventory
-        .filter(it => !it.openedAt && !it.archived && !plannedIds.has(it.id))
+        .filter(it => !it.openedAt && !it.archived && (includePlanned || !plannedByInv.has(it.id)))
         .map(it => ({ ...it, _calc: calc(it) }))
-        .filter(it => it._calc.status === 'ready' || it._calc.status === 'shelf_warning')
-        .sort((a, b) => (a.expiry || '9999-12-31').localeCompare(b.expiry || '9999-12-31'));
+        .filter(it => (it._calc.status === 'ready' || it._calc.status === 'shelf_warning') && sensorTypeById(it.typeId));
 
       const today = todayISO();
-      let cursor = suggestPlanStartDate();
-      const proposals = [];
-      candidates.forEach(item => {
+      const busyEnd = latestBusyEnd(!includePlanned);
+      const startCursor = busyEnd && busyEnd > today ? busyEnd : today;
+      const ordered = includePlanned
+        ? orderWithLowPriorityGs1(candidates, startCursor)
+        : candidates.sort((a, b) => (a.expiry || '9999-12-31').localeCompare(b.expiry || '9999-12-31'));
+
+      let cursor = startCursor;
+      return ordered.map(item => {
         const type = sensorTypeById(item.typeId);
-        if (!type) return;
-        const startDate = cursor >= today ? cursor : today;
+        const startDate = cursor;
         const endDate = addDays(startDate, type.wearDays);
         const grace = expiryGraceApplies(item.typeId, startDate, item.expiry);
-        const overExpiry = !!item.expiry && startDate > item.expiry && !grace;
-        proposals.push({
+        const existing = plannedByInv.get(item.id);
+        cursor = endDate;
+        return {
           invId: item.id,
           typeId: item.typeId,
           typeName: type.name,
@@ -3307,11 +3318,42 @@
           expiry: item.expiry,
           startDate,
           endDate,
-          warning: overExpiry
-        });
-        cursor = endDate;
+          planId: existing?.id || null,
+          prevStart: existing?.startDate || null,
+          warning: !!item.expiry && startDate > item.expiry && !grace
+        };
       });
-      return proposals;
+    }
+
+    // 기본은 유효기간 임박순이되 GS1은 맨 뒤로 미룬다. 단, 미루면 다른 센서가 유효기간을 넘기게 되는 경우에는
+    // 미루지 않는다(유효기간 안에 시작하지 못하는 센서가 늘어나지 않는 범위에서만 우선순위를 낮춤).
+    function orderWithLowPriorityGs1(items, startDate) {
+      const dur = it => sensorTypeById(it.typeId)?.wearDays || 0;
+      const expiryOf = it => it.expiry || '9999-12-31';
+      const pref = (a, b) => ((a.typeId === 'gs1') - (b.typeId === 'gs1')) || expiryOf(a).localeCompare(expiryOf(b));
+      // 시작일이 유효기간을 넘지 않아야 하므로 완료 기한(유효기간+사용일수) 순이 시작 위반을 가장 적게 만든다
+      const edf = (a, b) => addDays(expiryOf(a), dur(a)).localeCompare(addDays(expiryOf(b), dur(b)));
+      const violations = (list, from) => {
+        let cur = from, count = 0;
+        [...list].sort(edf).forEach(it => { if (it.expiry && cur > it.expiry) count++; cur = addDays(cur, dur(it)); });
+        return count;
+      };
+      const result = [];
+      let rest = [...items].sort(pref);
+      let cursor = startDate;
+      while (rest.length) {
+        const baseline = violations(rest, cursor);
+        let pick = rest.find(c => {
+          const others = rest.filter(x => x !== c);
+          const own = c.expiry && cursor > c.expiry ? 1 : 0;
+          return own + violations(others, addDays(cursor, dur(c))) <= baseline;
+        });
+        if (!pick) pick = [...rest].sort(edf)[0];
+        result.push(pick);
+        rest = rest.filter(x => x !== pick);
+        cursor = addDays(cursor, dur(pick));
+      }
+      return result;
     }
 
     function renderAutoPlanList() {
@@ -3331,6 +3373,7 @@
             <div style="flex:1;">
               <div class="name">${escapeHtml(p.typeName)}${p.serial ? ` · S/N ${escapeHtml(p.serial)}` : ''}</div>
               <div class="meta">${p.startDate} ~ ${p.endDate} (유효기간 ${fmtDate(p.expiry) || '-'})</div>
+              ${p.planId ? `<div class="meta" style="color:var(--primary);">기존 계획 ${p.prevStart}${p.prevStart === p.startDate ? ' (변경 없음)' : ` → ${p.startDate}`}</div>` : ''}
               ${p.warning ? `<div class="meta" style="color:var(--red);">⚠ 이 순서대로면 유효기간이 지난 뒤 시작하게 되어 사용할 수 없습니다. 시작일을 직접 조정해주세요.</div>` : ''}
             </div>
           </label>`;
@@ -3346,10 +3389,16 @@
 
     function openAutoPlanPanel() {
       closePlanPanelsExcept('auto');
-      planAutoProposals = buildAutoPlanProposals();
+      els.planAutoIncludePlanned.checked = false;
+      planAutoProposals = buildAutoPlanProposals(false);
       renderAutoPlanList();
       els.planAutoPanel.style.display = '';
     }
+
+    els.planAutoIncludePlanned.addEventListener('change', () => {
+      planAutoProposals = buildAutoPlanProposals(els.planAutoIncludePlanned.checked);
+      renderAutoPlanList();
+    });
 
     function closeAutoPlanPanel() {
       els.planAutoPanel.style.display = 'none';
@@ -3615,23 +3664,18 @@
     // 등록된 전체 사용계획 중 가장 마지막 종료일 반환
     // 등록 계획 없으면 사용중 센서 종료일, 그것도 없으면 오늘
     function suggestPlanStartDate() {
-      if (state.plans.length) {
-        const lastEnd = state.plans.reduce((best, p) => {
-          const e = planEndDate(p);
-          return e > best ? e : best;
-        }, '');
-        if (lastEnd) return lastEnd >= todayISO() ? lastEnd : todayISO();
-      }
-      // 등록 계획 없으면 사용중 센서 종료일 참조
-      const inUse = inUsePseudoPlans();
-      if (inUse.length) {
-        const lastEnd = inUse.reduce((best, p) => {
-          const e = planEndDate(p);
-          return e > best ? e : best;
-        }, '');
-        if (lastEnd && lastEnd >= todayISO()) return lastEnd;
-      }
-      return todayISO();
+      const lastEnd = latestBusyEnd(true);
+      return lastEnd && lastEnd >= todayISO() ? lastEnd : todayISO();
+    }
+
+    // 센서를 붙이고 있는 가장 늦은 종료일: 사용중(개봉한) 센서의 종료일과, includePlans면 등록된 계획의 종료일 중 늦은 쪽
+    // (등록 계획이 있어도 사용중 센서가 더 늦게 끝나면 그 뒤부터 시작해야 한다)
+    function latestBusyEnd(includePlans) {
+      let best = '';
+      const consider = p => { const e = planEndDate(p); if (e > best) best = e; };
+      inUsePseudoPlans().forEach(consider);
+      if (includePlans) state.plans.forEach(consider);
+      return best;
     }
 
     // plan 폼 열기
@@ -3694,7 +3738,15 @@
         showToast('선택된 항목이 없습니다.', 'err');
         return;
       }
+      const changing = checked.filter(p => p.planId && p.prevStart !== p.startDate).length;
+      if (changing && !confirm(`기존 계획 ${changing}건의 시작일이 바뀝니다. 계속할까요?`)) return;
+      let added = 0, moved = 0;
       checked.forEach(p => {
+        const existing = p.planId ? state.plans.find(x => x.id === p.planId) : null;
+        if (existing) {
+          if (existing.startDate !== p.startDate) { existing.startDate = p.startDate; moved++; }
+          return;
+        }
         state.plans.push({
           id: uid('plan'),
           invId: p.invId,
@@ -3702,11 +3754,12 @@
           startDate: p.startDate,
           createdAt: new Date().toISOString()
         });
+        added++;
       });
       saveState();
       closeAutoPlanPanel();
       rerender();
-      showToast(`${checked.length}건을 계획에 추가했습니다.`);
+      showToast(`계획 ${added}건 추가${moved ? `, ${moved}건 시작일 변경` : ''}했습니다.`);
     });
 
     els.planStartDate.addEventListener('input', checkPlanOverlapUI);
