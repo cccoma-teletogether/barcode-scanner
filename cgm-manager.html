@@ -410,6 +410,10 @@
           <button class="btn" id="exportInventoryCsv" title="폐기·종료·사용중을 뺀 미개봉 재고를 CSV로 저장">파일로 저장</button>
           <button class="btn primary" id="quickAdd">+ 재고 추가</button>
         </div>
+        <label class="mini" style="display:flex; align-items:center; gap:6px; justify-content:flex-end; margin:-4px 0 10px; cursor:pointer;">
+          <input id="csvWithSerial" type="checkbox" style="width:15px; height:15px;" />
+          "파일로 저장" 시 일련번호(S/N) 포함
+        </label>
           <div class="list">
             <div class="item head">
               <div>센서 / S/N</div>
@@ -938,6 +942,7 @@
       saveAlertDays: document.getElementById('saveAlertDays'),
       exportData: document.getElementById('exportData'),
       exportInventoryCsv: document.getElementById('exportInventoryCsv'),
+      csvWithSerial: document.getElementById('csvWithSerial'),
       importFile: document.getElementById('importFile'),
       chooseBackupDir: document.getElementById('chooseBackupDir'),
       clearBackupDir: document.getElementById('clearBackupDir'),
@@ -4517,7 +4522,7 @@
       const s = String(v ?? '');
       return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     }
-    function buildInventoryCsvRows() {
+    function buildInventoryCsvRows(withSerial) {
       const typeFilter = els.filterType.value;
       planStartByInv = new Map(state.plans.map(p => [p.invId, p.startDate]));
       return state.inventory
@@ -4525,17 +4530,24 @@
         .filter(it => !typeFilter || it.typeId === typeFilter)
         .filter(it => !it.archived && !it.openedAt) // 개봉(사용중·종료)·폐기 제외 = 미개봉 재고만
         .sort((a, b) => compareItems(a, b, els.sortBy.value))
-        .map(it => [
-          sensorTypeById(it.typeId)?.name || it.typeId,
-          it.serial || '',
-          it.calc.shelfRemaining == null ? '' : it.calc.shelfRemaining,
-          it.expiry || ''
-        ]);
+        .map(it => {
+          const type = sensorTypeById(it.typeId);
+          const row = [type?.name || it.typeId];
+          if (withSerial) row.push(it.serial || '');
+          row.push(type?.wearDays ?? '', it.expiry || '');
+          return row;
+        });
     }
+    const CSV_SERIAL_KEY = 'cgm_csv_with_serial';
+    try { els.csvWithSerial.checked = localStorage.getItem(CSV_SERIAL_KEY) === '1'; } catch {}
+    els.csvWithSerial.addEventListener('change', () => {
+      try { localStorage.setItem(CSV_SERIAL_KEY, els.csvWithSerial.checked ? '1' : '0'); } catch {}
+    });
     els.exportInventoryCsv.addEventListener('click', async () => {
-      const rows = buildInventoryCsvRows();
+      const withSerial = els.csvWithSerial.checked;
+      const rows = buildInventoryCsvRows(withSerial);
       if (!rows.length) { showToast('저장할 재고가 없습니다. (폐기·종료·사용중 제외)', 'err'); return; }
-      const header = ['센서종류', '일련번호', '사용가능일수', '유효기간'];
+      const header = withSerial ? ['센서종류', '일련번호', '사용일수', '유효기간'] : ['센서종류', '사용일수', '유효기간'];
       // 엑셀에서 한글이 깨지지 않도록 UTF-8 BOM을 붙인다
       const csv = '﻿' + [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
       await saveTextFile(`cgmmgr-inventory-${todayISO()}.csv`, csv, 'text/csv;charset=utf-8');
