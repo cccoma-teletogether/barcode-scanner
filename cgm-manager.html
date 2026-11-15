@@ -3519,67 +3519,6 @@
       return best;
     }
 
-    // 최소 중복 착용(옵션 ⑤)의 계산: 교체 1회당 최대 cap일까지 새 센서를 미리 붙여 겹치게 할 수 있을 때,
-    // 손실 센서 수가 가장 적고(1순위) 겹치는 일수 합계가 가장 적은(2순위) 배치를 구한다.
-    // 순서가 정해지면 DP로 정확히 풀고(소규모 전수탐색 600건 모두 일치), 순서는 정렬 기준 3가지 중 최선에서 시작해 센서를 옮겨 보며 개선한다.
-    // allowFirst: 사용중 센서가 시작일에 끝나서 첫 센서를 cap일까지 일찍(사용중 센서와 겹쳐) 시작할 수 있는 경우
-    function minOverlapFixedOrder(order, cap, allowFirst) {
-      const OFF = allowFirst ? cap : 0, total = order.reduce((sum, j) => sum + j.p, 0), size = OFF + total + 1;
-      let layer = new Array(size).fill(null);
-      for (let a = 0; a <= (allowFirst ? cap : 0); a++) layer[OFF - a] = { u: 0, ov: a };
-      const parents = [];
-      const better = (u, ov, cur) => !cur || u < cur.u || (u === cur.u && ov < cur.ov);
-      for (const j of order) {
-        const next = new Array(size).fill(null), par = new Array(size).fill(null);
-        for (let idx = 0; idx < size; idx++) {
-          const st = layer[idx]; if (!st) continue;
-          const t = idx - OFF;
-          if (better(st.u + 1, st.ov, next[idx])) { next[idx] = { u: st.u + 1, ov: st.ov }; par[idx] = { prev: idx, act: 'skip', a: 0 }; }
-          if (t <= j.last) {
-            for (let a = 0; a <= cap; a++) {
-              const i2 = t + j.p - a + OFF; if (i2 < 0 || i2 >= size) continue;
-              if (better(st.u, st.ov + a, next[i2])) { next[i2] = { u: st.u, ov: st.ov + a }; par[i2] = { prev: idx, act: 'use', a }; }
-            }
-          }
-        }
-        parents.push(par); layer = next;
-      }
-      let bi = -1;
-      for (let idx = 0; idx < size; idx++) {
-        const st = layer[idx]; if (!st) continue;
-        if (bi < 0 || st.u < layer[bi].u || (st.u === layer[bi].u && (st.ov < layer[bi].ov || (st.ov === layer[bi].ov && idx > bi)))) bi = idx;
-      }
-      const acts = []; let idx = bi;
-      for (let i = order.length - 1; i >= 0; i--) { const pr = parents[i][idx]; acts.unshift({ act: pr.act, from: pr.prev - OFF, a: pr.a }); idx = pr.prev; }
-      let lastUsed = -1; acts.forEach((x, i) => { if (x.act === 'use') lastUsed = i; });
-      if (lastUsed >= 0) acts[lastUsed].a = 0;   // 마지막 센서 뒤의 겹침은 의미가 없다
-      const first = acts.findIndex(x => x.act === 'use');
-      let ov = first >= 0 && acts[first].from < 0 ? -acts[first].from : 0;
-      acts.forEach(x => { if (x.act === 'use') ov += x.a; });
-      return { u: layer[bi].u, ov, acts, order };
-    }
-    function solveMinOverlap(jobs, cap, allowFirst) {
-      const keys = [
-        (a, b) => (a.last + a.p) - (b.last + b.p) || a.last - b.last,
-        (a, b) => (a.last + a.p - cap) - (b.last + b.p - cap) || a.last - b.last,
-        (a, b) => a.last - b.last || a.p - b.p
-      ];
-      const better = (x, y) => x.u !== y.u ? x.u < y.u : x.ov < y.ov;
-      let best = null;
-      keys.forEach(k => { const r = minOverlapFixedOrder([...jobs].sort(k), cap, allowFirst); if (!best || better(r, best)) best = r; });
-      for (let pass = 0; pass < 1 && jobs.length <= 60; pass++) {   // 화면 응답을 위해 개선은 1회만 한다
-        for (let i = 0; i < best.order.length; i++) {
-          for (let k = 0; k < best.order.length; k++) {
-            if (i === k) continue;
-            const o = [...best.order]; const [x] = o.splice(i, 1); o.splice(k, 0, x);
-            const r = minOverlapFixedOrder(o, cap, allowFirst);
-            if (better(r, best)) best = r;
-          }
-        }
-      }
-      return best;
-    }
-
     // ── 손실 최소화 배치 ──────────────────────────────────────────────────
     // 미개봉 재고 전부를 시작일부터 공백 없이 이어 배치한다. 종류별 마지막 시작일(latestStartForExpiry)을 못 지키는
     // 센서는 손실로 일정에서 빼고, 손실 개수가 최소가 되도록 Moore-Hodgson 방식으로 고른다.
@@ -3689,26 +3628,34 @@
       options.push({ key: '4', label: '④ 이용일수 최대화 (G7 부분 착용 허용)', applicable: true,
         note: '유효기간 안에 끝까지 못 쓰는 Dexcom G7(엄격형)은 유효기간 종료일까지는 사용', sched: sched4, lost: lost4,
         usable: sched4.length, partialCount: sched4.filter(x => x.partial).length, days: r4.days, endDate: addDays(startDate, r4.days) });
-      // ⑤ 최소 중복 착용: 손실을 줄이려고 센서를 겹쳐 쓸 수 있을 때(교체 1회당 최대 cap일), 손실이 가장 적고 겹침 합계가 가장 적은 배치.
-      // 사용중 센서가 시작일에 끝나면 첫 센서도 사용중 센서와 겹쳐(일찍) 시작할 수 있다.
-      const inUseEnd = latestBusyEnd(false), allowFirst = !!inUseEnd && inUseEnd === startDate;
-      const noOverlapLoss = options[0].lost.length;
-      [1, 2, 3].forEach(cap => {
-        const r5 = solveMinOverlap(jobs, cap, allowFirst);
-        const sched5 = [], lost5 = []; let prevA = 0;
-        r5.order.forEach((j, i) => {
-          const a = r5.acts[i];
-          if (a.act === 'skip') { lost5.push(j); return; }
-          const overlapPrev = sched5.length ? prevA : (a.from < 0 ? -a.from : 0);
-          sched5.push({ j, start: addDays(startDate, a.from), end: addDays(startDate, a.from + j.p), margin: j.last - a.from, overlapPrev, startOff: a.from, endOff: a.from + j.p });
-          prevA = a.a;
+      // ⑤ 손실 센서 병행 착용: 옵션 ①의 일정은 그대로 두고, 손실이 확정된 센서만 일정 중간에 끼워(2개를 동시에 착용) 살린다.
+      // 병행 착용 센서끼리는 겹치지 않게 놓고, 각 센서는 마지막 시작일에 가장 가깝게(가능한 한 늦게) 시작해 겹침을 줄인다.
+      {
+        const base = options[0], chainEnd = base.sched.length ? daysBetween(startDate, base.sched[base.sched.length - 1].end) : 0;
+        const lostList = [...base.lost];
+        const mr = moore(lostList);   // 병행 센서끼리 겹치지 않는 최대 개수
+        const fit = edf(mr.kept), stillLost = [...mr.lost];
+        // 앞에서부터 당겨 놓아 실행 가능 여부 확인 후, 뒤에서부터 마감까지 최대한 늦춘다
+        const par = []; let cur = 0;
+        fit.forEach(j => { par.push({ j, s: cur }); cur += j.p; });
+        let limit = Infinity;
+        for (let i = par.length - 1; i >= 0; i--) {
+          const j = par[i].j, end = Math.min(j.last + j.p, limit);
+          par[i].s = end - j.p; limit = par[i].s;
+        }
+        const parSched = par.map(x => {
+          const st = x.s, en = x.s + x.j.p, ov = Math.max(0, Math.min(en, chainEnd) - Math.max(st, 0));
+          return { j: x.j, start: addDays(startDate, st), end: addDays(startDate, en), margin: x.j.last - st, parallel: true, overlapPrev: ov, startOff: st, endOff: en };
         });
-        const spanDays = sched5.length ? sched5[sched5.length - 1].endOff - sched5[0].startOff : 0;
-        options.push({ key: `5-${cap}`, label: `⑤ 최소 중복 착용 (교체당 최대 ${cap}일 겹침)`, applicable: true,
-          note: `중복 없이는 손실 ${noOverlapLoss}개 → 겹침 합계 ${r5.ov}일로 손실 ${lost5.length}개`,
-          sched: sched5, lost: lost5, usable: sched5.length, overlapTotal: r5.ov, overlapCount: sched5.filter(x => x.overlapPrev > 0).length,
-          days: spanDays, endDate: sched5.length ? sched5[sched5.length - 1].end : startDate });
-      });
+        const chain = base.sched.map(x => ({ ...x, startOff: daysBetween(startDate, x.start), endOff: daysBetween(startDate, x.end) }));
+        const all = [...chain, ...parSched].sort((x, y) => x.startOff - y.startOff || x.endOff - y.endOff);
+        const ovTotal = parSched.reduce((sum, x) => sum + x.overlapPrev, 0);
+        const spanEnd = all.length ? Math.max(...all.map(x => x.endOff)) : 0;
+        options.push({ key: '5', label: '⑤ 손실 센서 병행 착용', applicable: true,
+          note: `옵션 ①의 손실 ${base.lost.length}개 중 ${parSched.length}개를 일정 중간에 겹쳐(동시 착용) 사용${stillLost.length ? ` — ${stillLost.length}개는 병행으로도 불가` : ''}`,
+          sched: all, lost: stillLost, usable: all.length, overlapTotal: ovTotal, overlapCount: parSched.length,
+          days: spanEnd, endDate: addDays(startDate, spanEnd) });
+      }
       return { startDate, targetTypeIds: [...targetIds], total: jobs.length, options };
     }
 
@@ -3731,7 +3678,7 @@
             <button type="button" class="btn small" style="white-space:nowrap; flex-shrink:0;" data-loss-key="${o.key}" ${o.applicable ? '' : 'disabled'}>${o.key === planAutoLossKey ? '선택됨' : '일정 보기'}</button>
           </div>
           ${o.applicable ? `
-            <div class="meta"><strong>손실 ${o.lost.length}개</strong> (사용 ${o.usable}개${o.partialCount ? `, 부분 착용 ${o.partialCount}개` : ''}) · 이용 ${o.days}일${o.overlapTotal != null ? ` · 중복 착용 총 ${o.overlapTotal}일(${o.overlapCount}회)` : ''} · 마지막 종료 ${o.endDate}</div>
+            <div class="meta"><strong>손실 ${o.lost.length}개</strong> (사용 ${o.usable}개${o.partialCount ? `, 부분 착용 ${o.partialCount}개` : ''}) · 이용 ${o.days}일${o.overlapTotal != null ? ` · 병행 착용 ${o.overlapCount}개 · 동시 착용 총 ${o.overlapTotal}일` : ''} · 마지막 종료 ${o.endDate}</div>
             <div class="meta">${o.key === '4' ? '미사용' : '손실'} 항목: ${escapeHtml(lossSummaryText(o.lost))}</div>
             ${o.overlapTotal != null ? `<div class="meta" style="color:#6d28d9;">${escapeHtml(o.note)}</div>` : ''}`
             : `<div class="meta" style="color:var(--muted);">적용 불가 — ${escapeHtml(o.reason)}</div>`}
@@ -3748,7 +3695,7 @@
         const type = sensorTypeById(s.j.typeId), ex = planned.get(s.j.it.id);
         return { invId: s.j.it.id, typeId: s.j.typeId, typeName: type?.name || s.j.typeId, serial: s.j.it.serial, lot: s.j.it.lot,
           expiry: s.j.it.expiry, startDate: s.start, endDate: s.end, planId: ex?.id || null, prevStart: ex?.startDate || null,
-          warning: false, margin: s.margin, partialEnd: s.partial ? s.end : null, wornDays: s.partial ? s.wornDays : null, overlapPrev: s.overlapPrev || 0 };
+          warning: false, margin: s.margin, partialEnd: s.partial ? s.end : null, wornDays: s.partial ? s.wornDays : null, overlapPrev: s.overlapPrev || 0, parallel: !!s.parallel };
       }) : [];
       planAutoLost = opt.applicable ? opt.lost.map(j => ({
         invId: j.it.id, typeName: sensorTypeById(j.typeId)?.name || j.typeId, serial: j.it.serial, expiry: j.it.expiry,
@@ -3844,7 +3791,7 @@
             <div style="flex:1;">
               <div class="name">${escapeHtml(p.typeName)}${p.serial ? ` · S/N ${escapeHtml(p.serial)}` : ''}</div>
               <div class="meta">${p.startDate} ~ ${p.endDate} (유효기간 ${fmtDate(p.expiry) || '-'})${p.margin != null ? ` · 여유 ${p.margin}일` : ''}</div>
-              ${p.overlapPrev ? `<div class="meta" style="color:#6d28d9;">앞 센서(첫 센서는 사용중 센서)가 끝나기 ${p.overlapPrev}일 전에 미리 부착 — ${p.overlapPrev}일 중복 착용</div>` : ''}
+              ${p.parallel ? `<div class="meta" style="color:#6d28d9;">손실 확정 센서를 병행 착용 — 다른 센서와 ${p.overlapPrev}일 동시 착용</div>` : ''}
               ${p.partialEnd ? `<div class="meta" style="color:#7c3aed;">부분 착용: 유효기간 종료일(${p.endDate})까지 ${p.wornDays}일만 착용</div>` : ''}
               ${p.planId ? `<div class="meta" style="color:var(--primary);">기존 계획 ${p.prevStart}${p.prevStart === p.startDate ? ' (변경 없음)' : ` → ${p.startDate}`}</div>` : ''}
               ${p.warning ? `<div class="meta" style="color:var(--red);">⚠ 이 순서대로면 유효기간 규칙상 사용할 수 없습니다(${isGraceType(p.typeId) ? '유효기간 하루 전까지 시작해야 함' : '사용종료일이 유효기간을 넘음'}). 시작일을 직접 조정해주세요.</div>` : ''}
