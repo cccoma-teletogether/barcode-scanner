@@ -133,6 +133,9 @@
     .plan-bar.dragging { opacity: 0.4 !important; cursor: grabbing; }
     .plan-bar.expiry-warn { outline: 2px solid var(--red); outline-offset: -1px; }
     .plan-bar.expiry-risk { outline: 2px solid var(--orange); outline-offset: -1px; }
+    /* 부분 착용: 유효기간 종료일에 사용 중 끝나는 계획 */
+    .plan-bar.partial { outline: 2px dashed #7c3aed; outline-offset: -1px;
+      background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.45) 0 4px, transparent 4px 8px); }
     .cal-day.drag-over { background: #dbeafe; border-color: var(--primary); }
     .plan-list-item {
       display: grid; grid-template-columns: 10px 1fr auto; align-items: center;
@@ -3014,6 +3017,9 @@
         const label = plan._archived ? '실사용' : '사용중';
         return `<span class="badge" style="background:#dcfce7; color:#15803d; border-color:#bbf7d0;">${label} ${plan.startDate} ~ ${end}</span>`;
       }
+      if (plan.partialEnd) {
+        return `<span class="badge" style="background:#f5f3ff; color:#6d28d9; border-color:#c4b5fd;" title="유효기간 종료일에 사용 중 종료됩니다">부분 착용 ${plan.startDate} ~ ${end} (유효기간 종료)</span>`;
+      }
       return `<span class="badge" style="background:#eff6ff; color:var(--primary); border-color:#bfdbfe;">계획 ${plan.startDate} ~ ${end}</span>`;
     }
 
@@ -3834,7 +3840,7 @@
         // 종료일~유효기간 간격
         const gapDays = expiry && !overEnd ? daysBetween(end, expiry) : null;
         const gapHtml = p.partialEnd
-          ? `<span style="color:#7c3aed; font-size:11px;">부분 착용 — 유효기간 종료일까지 ${daysBetween(p.startDate, p.partialEnd)}일</span>`
+          ? `<span style="color:#7c3aed; font-size:11px;">부분 착용 — 유효기간 종료일(${p.partialEnd})에 사용 중 종료, ${daysBetween(p.startDate, p.partialEnd)}일만 착용</span>`
           : overEnd
           ? (grace
             ? `<span style="color:var(--orange); font-size:11px;">⚠ 유효기간 초과위험 (${daysBetween(expiry, end)}일, 종료일까지 사용 가능)</span>`
@@ -3928,14 +3934,14 @@
           const expiry = item?.expiry || '';
           const overEnd = expiry && end > expiry;
           const grace = expiryGraceApplies(p.typeId, p.startDate, expiry);
-          const warnClass = overEnd ? (grace ? ' expiry-risk' : ' expiry-warn') : '';
+          const warnClass = p.partialEnd ? ' partial' : (overEnd ? (grace ? ' expiry-risk' : ' expiry-warn') : '');
           const isStart = dateStr === p.startDate;
-          const label = isStart ? (type?.name || '-') : '';
+          const label = isStart ? (type?.name || '-') : (p.partialEnd && dateStr === end ? '유효기간 끝' : '');
           const opacity = isStart ? '1' : '0.7';
           const inUseExtra = p._inUse ? `outline:1px solid ${color};outline-offset:-1px;` : '';
           const styleAttr = `background:${color};opacity:${opacity};${inUseExtra}`;
           const inUseLabel = p._inUse ? (p._archived ? ' [폐기]' : (p._ended ? ' [종료 처리 필요]' : ' [사용중]')) : '';
-          const titleAttr = escapeAttr(`${type?.name || '-'}${inUseLabel} ${p.startDate}~${end}${overEnd ? (grace ? ' ⚠유효기간 초과위험' : ' ⚠유효기간 초과') : ''}`);
+          const titleAttr = escapeAttr(`${type?.name || '-'}${inUseLabel} ${p.startDate}~${end}${p.partialEnd ? ' ⚠부분 착용 — 유효기간 종료일에 사용 중 종료' : (overEnd ? (grace ? ' ⚠유효기간 초과위험' : ' ⚠유효기간 초과') : '')}`);
           const draggable = p._inUse ? '' : 'draggable="true"';
           return `<span class="plan-bar${warnClass}" style="${styleAttr}" title="${titleAttr}" data-plan-bar="${escapeAttr(p.id)}" ${draggable}>${escapeHtml(label)}</span>`;
         }).join('');
