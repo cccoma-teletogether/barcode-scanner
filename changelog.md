@@ -1,5 +1,10 @@
 # CGMMgr CHANGELOG
 
+## [TASK-118] 2026-11-15 유효기간 규칙 선택을 Dexcom G7 하나로 제한
+- TASK-117에서 모든 종류에 열어 둔 유예형/엄격형 선택을, 분류가 확정되지 않은 **Dexcom G7 하나로 제한**했습니다. 나머지 종류(CareSens Air·Barozen Fit·GS1은 유예형, 피코링·FreeStyle Libre 2는 엄격형)는 기본 분류로 고정입니다.
+- 선택 가능 종류는 `EXPIRY_RULE_SELECTABLE_TYPE_IDS`로 관리하고, `isGraceType()`은 이 종류에 대해서만 저장된 선택(`settings.expiryRules`)을 따릅니다. 이전 버전에서 다른 종류에 저장된 값이 있어도 무시됩니다.
+- 요구사항정의서 3.4를 같이 수정했습니다.
+
 ## [TASK-117] 2026-11-15 종류별 유효기간 규칙(유예형/엄격형)을 자동 계획 제안에서 선택
 - Dexcom G7처럼 분류가 확정되지 않은 종류를 직접 정할 수 있도록, 자동 계획 제안 패널에 **종류별 유효기간 규칙** 선택(유예형/엄격형)을 추가했습니다. G7뿐 아니라 모든 센서 종류에 쓸 수 있습니다.
 - 선택은 설정(`settings.expiryRules`)에 저장되어 JSON 백업·복원에 포함되고, 센서 종류를 수정해도 지워지지 않습니다. 기본 분류(유예형: CareSens Air·Barozen Fit·GS1·Dexcom G7, 엄격형: 피코링·FreeStyle Libre 2)와 같게 되돌리면 저장값을 지웁니다.

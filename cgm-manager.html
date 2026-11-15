@@ -535,7 +535,7 @@
               </div>
               <div id="planAutoExpiryDesc" class="mini" style="margin-bottom:8px; color:var(--muted);">센서는 한 번에 하나만 착용한다는 전제로, 유효기간이 임박한 순서대로 종류와 무관하게 한 줄로 이어 붙여 제안합니다. 동시 착용이 필요한 예외 상황은 제안 적용 후 개별적으로 추가해주세요. ⚠ 표시는 이 순서대로면 유효기간 규칙상 사용할 수 없는 항목입니다(유예형은 유효기간 하루 전까지 시작해야 하고, 엄격형은 사용종료일이 유효기간 이내여야 합니다).</div>
               <div style="margin-bottom:8px;">
-                <div class="mini" style="margin-bottom:4px;">종류별 유효기간 규칙 <span style="color:var(--muted);">— 유예형: 유효기간 하루 전까지 시작하면 이후에도 사용종료일까지 사용 / 엄격형: 사용종료일이 유효기간 이내</span></div>
+                <div class="mini" style="margin-bottom:4px;">Dexcom G7 유효기간 규칙 <span style="color:var(--muted);">— 유예형: 유효기간 하루 전까지 시작하면 이후에도 사용종료일까지 사용 / 엄격형: 사용종료일이 유효기간 이내</span></div>
                 <div id="planAutoRuleList" class="stack" style="gap:6px 12px;"></div>
               </div>
               <label class="mini" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
@@ -1339,11 +1339,15 @@
     }
     // 유효기간 하루 전까지 개봉하면 유효기간이 지나도 사용종료일까지 사용 가능한 센서
     const EXPIRY_GRACE_TYPE_IDS = new Set(['caresens_air', 'barogen_fit', 'gs1', 'dexcom_g7']); // 기본 분류
-    // 종류별 유효기간 규칙: 설정(expiryRules)에서 사용자가 바꾼 값이 있으면 그것을, 없으면 기본 분류를 따른다
+    // 사용자가 유예형/엄격형을 직접 고를 수 있는 종류 (분류가 확정되지 않은 종류만). 나머지는 기본 분류로 고정
+    const EXPIRY_RULE_SELECTABLE_TYPE_IDS = new Set(['dexcom_g7']);
+    // 종류별 유효기간 규칙: 선택 가능한 종류는 설정(expiryRules)의 값을, 그 외에는 기본 분류를 따른다
     function isGraceType(typeId) {
-      const rule = state.settings?.expiryRules?.[typeId];
-      if (rule === 'grace') return true;
-      if (rule === 'strict') return false;
+      if (EXPIRY_RULE_SELECTABLE_TYPE_IDS.has(typeId)) {
+        const rule = state.settings?.expiryRules?.[typeId];
+        if (rule === 'grace') return true;
+        if (rule === 'strict') return false;
+      }
       return EXPIRY_GRACE_TYPE_IDS.has(typeId);
     }
     function expiryGraceApplies(typeId, startDate, expiry) {
@@ -3639,7 +3643,7 @@
 
     // 종류별 유예형/엄격형 선택 (설정의 expiryRules에 저장되고, 기본 분류와 같으면 지운다)
     function renderAutoRuleControls() {
-      els.planAutoRuleList.innerHTML = state.sensorTypes.map(t => `
+      els.planAutoRuleList.innerHTML = state.sensorTypes.filter(t => EXPIRY_RULE_SELECTABLE_TYPE_IDS.has(t.id)).map(t => `
         <label class="mini" style="display:flex; align-items:center; gap:4px;">${escapeHtml(t.name)}
           <select data-rule-type="${escapeAttr(t.id)}" style="width:auto; font-size:12px; padding:4px 6px;">
             <option value="grace"${isGraceType(t.id) ? ' selected' : ''}>유예형</option>
