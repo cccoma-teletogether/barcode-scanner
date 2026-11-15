@@ -134,6 +134,7 @@
     .plan-bar.expiry-warn { outline: 2px solid var(--red); outline-offset: -1px; }
     .plan-bar.expiry-risk { outline: 2px solid var(--orange); outline-offset: -1px; }
     /* 부분 착용: 유효기간 종료일에 사용 중 끝나는 계획 */
+    .plan-bar.parallel { outline: 2px solid #0891b2; outline-offset: -1px; }
     .plan-bar.partial { outline: 2px dashed #7c3aed; outline-offset: -1px;
       background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.45) 0 4px, transparent 4px 8px); }
     .cal-day.drag-over { background: #dbeafe; border-color: var(--primary); }
@@ -145,6 +146,7 @@
     /* 유효기간 초과위험(주황) / 초과(빨강) 계획은 배경색과 왼쪽 띠로 구분 */
     .plan-list-item.plan-risk { background: #fff7ed; border-color: #fed7aa; border-left: 4px solid var(--orange); }
     .plan-list-item.plan-over { background: #fef2f2; border-color: #fecaca; border-left: 4px solid var(--red); }
+    .plan-list-item.plan-parallel { background: #ecfeff; border-color: #a5f3fc; border-left: 4px solid #0891b2; }
     .plan-list-item.plan-partial { background: #f5f3ff; border-color: #ddd6fe; border-left: 4px solid #8b5cf6; }
     .plan-list-item.plan-selected {
       border-color: var(--primary); box-shadow: 0 0 0 2px #bfdbfe; background: #eff6ff;
@@ -3920,6 +3922,8 @@
             : '';
         // 이미 폐기한 이력은 지난 일이므로 색으로 강조하지 않는다
         const warnClass = p.partialEnd || duringExp ? ' plan-partial' : (overEnd && !p._archived ? (grace ? ' plan-risk' : ' plan-over') : '');
+        const parallelHtml = p.parallel && !p._archived ? ` <span style="color:#0e7490; font-size:11px;">⧉ 손실 센서 병행 착용(다른 센서와 동시 착용)</span>` : '';
+        const parallelClass = p.parallel && !p._archived ? ' plan-parallel' : '';
         if (p._inUse) {
           const statusBadge = p._archived
             ? `<span class="status archived" style="font-size:11px; padding:2px 6px;">폐기</span>`
@@ -3927,22 +3931,22 @@
               ? `<span class="status shelf_warning" style="font-size:11px; padding:2px 6px;">종료 처리 필요</span>`
               : `<span class="status in_use" style="font-size:11px; padding:2px 6px;">사용중</span>`;
           return `
-            <div class="plan-list-item${warnClass}" data-plan-id="${escapeAttr(p.id)}">
+            <div class="plan-list-item${warnClass}${parallelClass}" data-plan-id="${escapeAttr(p.id)}">
               <span class="plan-dot" style="background:${color}; outline:2px solid ${color}; outline-offset:1px;"></span>
               <div>
                 <div style="font-weight:700;">${escapeHtml(type?.name || '-')} ${statusBadge}</div>
-                <div class="meta">${p.startDate} ~ ${end} ${gapHtml}</div>
+                <div class="meta">${p.startDate} ~ ${end} ${gapHtml}${parallelHtml}</div>
                 <div class="meta">${item?.serial ? `S/N ${escapeHtml(item.serial)}` : '일련번호 없음'} · 유효기간 ${fmtDate(item?.expiry)}</div>
               </div>
               <span class="meta" style="white-space:nowrap;">실제 사용</span>
             </div>`;
         }
         return `
-          <div class="plan-list-item${warnClass}" data-plan-id="${escapeAttr(p.id)}">
+          <div class="plan-list-item${warnClass}${parallelClass}" data-plan-id="${escapeAttr(p.id)}">
             <span class="plan-dot" style="background:${color};"></span>
             <div style="flex:1;">
               <div style="font-weight:700;">${escapeHtml(type?.name || '-')}</div>
-              <div class="meta">${p.startDate} ~ ${end} ${gapHtml}</div>
+              <div class="meta">${p.startDate} ~ ${end} ${gapHtml}${parallelHtml}</div>
               <div class="meta">${item?.serial ? `S/N ${escapeHtml(item.serial)}` : '일련번호 없음'} · 유효기간 ${fmtDate(item?.expiry)}</div>
             </div>
             <div class="stack" style="flex-wrap:nowrap;">
@@ -4005,7 +4009,7 @@
           const overEnd = expiry && end > expiry;
           const grace = expiryGraceApplies(p.typeId, p.startDate, expiry);
           const duringExp = expiryDuringUse(p);
-          const warnClass = p.partialEnd || duringExp ? ' partial' : (overEnd ? (grace ? ' expiry-risk' : ' expiry-warn') : '');
+          const warnClass = p.partialEnd || duringExp ? ' partial' : (p.parallel ? ' parallel' : (overEnd ? (grace ? ' expiry-risk' : ' expiry-warn') : ''));
           const isStart = dateStr === p.startDate;
           const label = isStart ? (type?.name || '-') : ((p.partialEnd && dateStr === end) || (duringExp && dateStr === duringExp) ? '유효기간 끝' : '');
           const opacity = isStart ? '1' : '0.7';
@@ -4233,6 +4237,7 @@
           const changed = existing.startDate !== p.startDate;
           if (changed) { existing.startDate = p.startDate; moved++; }
           if (changed || lossApply) { if (p.partialEnd) existing.partialEnd = p.partialEnd; else delete existing.partialEnd; }
+          if (lossApply) { if (p.parallel) existing.parallel = true; else delete existing.parallel; }
           return;
         }
         state.plans.push({
@@ -4241,6 +4246,7 @@
           typeId: p.typeId,
           startDate: p.startDate,
           ...(p.partialEnd ? { partialEnd: p.partialEnd } : {}),
+          ...(p.parallel ? { parallel: true } : {}),
           createdAt: new Date().toISOString()
         });
         added++;
