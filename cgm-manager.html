@@ -3505,19 +3505,22 @@
       // ③ 대상 종류를 뺀 나머지는 100% 보장, 대상 종류가 손실 전담
       if (!hasTarget) options.push(na('3', `③ ${targetName} 손실 전담`, '대상 종류의 미개봉 재고가 없습니다.'));
       else {
-        let seq = edf(jobs.filter(j => !isT(j)));
-        if (!onTime(seq)) options.push(na('3', `③ ${targetName} 손실 전담`, `${targetName}을(를) 뺀 나머지만으로도 손실 없이 배치할 수 없습니다.`));
-        else {
-          const lostT = [];
-          [...jobs.filter(isT)].sort((a, b) => a.last - b.last || tie(a, b)).forEach(j => {
-            for (let pos = 0; pos <= seq.length; pos++) {
-              const trial = [...seq.slice(0, pos), j, ...seq.slice(pos)];
-              if (onTime(trial)) { seq = trial; return; }
-            }
-            lostT.push(j);
-          });
-          options.push(finalize('3', `③ ${targetName} 손실 전담`, seq, lostT, `${targetName}을(를) 제외한 종류는 모두 사용`));
-        }
+        // 대상 종류를 뺀 나머지를 먼저 배치한다. 나머지만으로 손실 없이 안 되면(재고가 넘치면) 나머지의 손실을 최소로 만든 뒤 진행
+        const rest = jobs.filter(j => !isT(j));
+        let seq = edf(rest), lostRest = [];
+        if (!onTime(seq)) { const mr = moore(rest); seq = edf(mr.kept); lostRest = mr.lost; }
+        const lostT = [];
+        [...jobs.filter(isT)].sort((a, b) => a.last - b.last || tie(a, b)).forEach(j => {
+          for (let pos = 0; pos <= seq.length; pos++) {
+            const trial = [...seq.slice(0, pos), j, ...seq.slice(pos)];
+            if (onTime(trial)) { seq = trial; return; }
+          }
+          lostT.push(j);
+        });
+        options.push(finalize('3', lostRest.length ? `③ ${targetName} 손실 전담 (나머지 ${lostRest.length}개 손실 불가피)` : `③ ${targetName} 손실 전담`,
+          seq, [...lostRest, ...lostT],
+          lostRest.length ? `${targetName}을(를) 빼도 나머지에서 ${lostRest.length}개는 손실이라, 나머지 손실을 최소로 만든 뒤 ${targetName}을(를) 넣을 수 있는 자리에만 배치`
+            : `${targetName}을(를) 제외한 종류는 모두 사용`));
       }
       return { startDate, targetTypeId, total: jobs.length, options };
     }
