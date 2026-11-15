@@ -533,7 +533,11 @@
                 <strong>자동 계획 제안</strong>
                 <span class="mini" id="planAutoSummary"></span>
               </div>
-              <div id="planAutoExpiryDesc" class="mini" style="margin-bottom:8px; color:var(--muted);">센서는 한 번에 하나만 착용한다는 전제로, 유효기간이 임박한 순서대로 종류와 무관하게 한 줄로 이어 붙여 제안합니다. 동시 착용이 필요한 예외 상황은 제안 적용 후 개별적으로 추가해주세요. ⚠ 표시는 이 순서대로면 유효기간 규칙상 사용할 수 없는 항목입니다(CareSens Air·Barozen Fit·GS1·Dexcom G7은 유효기간 하루 전까지 시작해야 하고, 그 외 종류는 사용종료일이 유효기간 이내여야 합니다).</div>
+              <div id="planAutoExpiryDesc" class="mini" style="margin-bottom:8px; color:var(--muted);">센서는 한 번에 하나만 착용한다는 전제로, 유효기간이 임박한 순서대로 종류와 무관하게 한 줄로 이어 붙여 제안합니다. 동시 착용이 필요한 예외 상황은 제안 적용 후 개별적으로 추가해주세요. ⚠ 표시는 이 순서대로면 유효기간 규칙상 사용할 수 없는 항목입니다(유예형은 유효기간 하루 전까지 시작해야 하고, 엄격형은 사용종료일이 유효기간 이내여야 합니다).</div>
+              <div style="margin-bottom:8px;">
+                <div class="mini" style="margin-bottom:4px;">종류별 유효기간 규칙 <span style="color:var(--muted);">— 유예형: 유효기간 하루 전까지 시작하면 이후에도 사용종료일까지 사용 / 엄격형: 사용종료일이 유효기간 이내</span></div>
+                <div id="planAutoRuleList" class="stack" style="gap:6px 12px;"></div>
+              </div>
               <label class="mini" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
                 배치 방식
                 <select id="planAutoMode" style="width:auto; font-size:12px; padding:6px 8px;">
@@ -795,12 +799,13 @@
   <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.23.0/umd/index.min.js"></script>
   <script>
     const STORAGE_KEY = 'cgm_v5';
-    const DEFAULT_SETTINGS = { alertDays: 30, avgShelfMonths: 0, customHolidays: {} };
-    // 설정 병합: customHolidays 객체를 DEFAULT_SETTINGS와 공유하지 않도록 매번 새로 만든다
+    const DEFAULT_SETTINGS = { alertDays: 30, avgShelfMonths: 0, customHolidays: {}, expiryRules: {} };
+    // 설정 병합: customHolidays·expiryRules 객체를 DEFAULT_SETTINGS와 공유하지 않도록 매번 새로 만든다
     function mergeSettings(src) {
       const s = { ...DEFAULT_SETTINGS, ...(src || {}) };
-      const h = src && src.customHolidays;
-      s.customHolidays = h && typeof h === 'object' && !Array.isArray(h) ? { ...h } : {};
+      const plain = o => o && typeof o === 'object' && !Array.isArray(o) ? { ...o } : {};
+      s.customHolidays = plain(src && src.customHolidays);
+      s.expiryRules = plain(src && src.expiryRules);
       return s;
     }
     const DEFAULT_SENSOR_TYPES = [
@@ -1015,6 +1020,7 @@
       planAutoList: document.getElementById('planAutoList'),
       planAutoIncludePlanned: document.getElementById('planAutoIncludePlanned'),
       planAutoMode: document.getElementById('planAutoMode'),
+      planAutoRuleList: document.getElementById('planAutoRuleList'),
       planAutoLossControls: document.getElementById('planAutoLossControls'),
       planAutoStart: document.getElementById('planAutoStart'),
       planAutoTarget: document.getElementById('planAutoTarget'),
@@ -1332,15 +1338,22 @@
       return state.sensorTypes.find(t => t.id === id) || DEFAULT_SENSOR_TYPE_MAP[id] || null;
     }
     // 유효기간 하루 전까지 개봉하면 유효기간이 지나도 사용종료일까지 사용 가능한 센서
-    const EXPIRY_GRACE_TYPE_IDS = new Set(['caresens_air', 'barogen_fit', 'gs1', 'dexcom_g7']);
+    const EXPIRY_GRACE_TYPE_IDS = new Set(['caresens_air', 'barogen_fit', 'gs1', 'dexcom_g7']); // 기본 분류
+    // 종류별 유효기간 규칙: 설정(expiryRules)에서 사용자가 바꾼 값이 있으면 그것을, 없으면 기본 분류를 따른다
+    function isGraceType(typeId) {
+      const rule = state.settings?.expiryRules?.[typeId];
+      if (rule === 'grace') return true;
+      if (rule === 'strict') return false;
+      return EXPIRY_GRACE_TYPE_IDS.has(typeId);
+    }
     function expiryGraceApplies(typeId, startDate, expiry) {
-      return EXPIRY_GRACE_TYPE_IDS.has(typeId) && !!startDate && !!expiry && startDate < expiry;
+      return isGraceType(typeId) && !!startDate && !!expiry && startDate < expiry;
     }
     // 종류별 유효기간 규칙에 따라 이 날짜에 시작해도 되는 가장 늦은 날.
     // 유예 대상: 유효기간 하루 전까지 시작하면 이후에도 사용종료일까지 사용 가능 / 그 외: 사용종료일이 유효기간 이내여야 함
     function latestStartForExpiry(typeId, expiry) {
       if (!expiry) return '9999-12-31';
-      if (EXPIRY_GRACE_TYPE_IDS.has(typeId)) return addDays(expiry, -1);
+      if (isGraceType(typeId)) return addDays(expiry, -1);
       return addDays(expiry, -(sensorTypeById(typeId)?.wearDays || 0));
     }
     // 센서 오류로 인한 조기 만료 등, 지나간 날짜로 처리해야 할 때 날짜를 직접 입력받는다
@@ -3611,7 +3624,7 @@
               <div class="name">${escapeHtml(p.typeName)}${p.serial ? ` · S/N ${escapeHtml(p.serial)}` : ''}</div>
               <div class="meta">${p.startDate} ~ ${p.endDate} (유효기간 ${fmtDate(p.expiry) || '-'})${p.margin != null ? ` · 여유 ${p.margin}일` : ''}</div>
               ${p.planId ? `<div class="meta" style="color:var(--primary);">기존 계획 ${p.prevStart}${p.prevStart === p.startDate ? ' (변경 없음)' : ` → ${p.startDate}`}</div>` : ''}
-              ${p.warning ? `<div class="meta" style="color:var(--red);">⚠ 이 순서대로면 유효기간 규칙상 사용할 수 없습니다(${EXPIRY_GRACE_TYPE_IDS.has(p.typeId) ? '유효기간 하루 전까지 시작해야 함' : '사용종료일이 유효기간을 넘음'}). 시작일을 직접 조정해주세요.</div>` : ''}
+              ${p.warning ? `<div class="meta" style="color:var(--red);">⚠ 이 순서대로면 유효기간 규칙상 사용할 수 없습니다(${isGraceType(p.typeId) ? '유효기간 하루 전까지 시작해야 함' : '사용종료일이 유효기간을 넘음'}). 시작일을 직접 조정해주세요.</div>` : ''}
             </div>
           </label>`;
       }).join('') + lostHtml;
@@ -3624,8 +3637,32 @@
       if (keep !== 'auto') closeAutoPlanPanel();
     }
 
+    // 종류별 유예형/엄격형 선택 (설정의 expiryRules에 저장되고, 기본 분류와 같으면 지운다)
+    function renderAutoRuleControls() {
+      els.planAutoRuleList.innerHTML = state.sensorTypes.map(t => `
+        <label class="mini" style="display:flex; align-items:center; gap:4px;">${escapeHtml(t.name)}
+          <select data-rule-type="${escapeAttr(t.id)}" style="width:auto; font-size:12px; padding:4px 6px;">
+            <option value="grace"${isGraceType(t.id) ? ' selected' : ''}>유예형</option>
+            <option value="strict"${isGraceType(t.id) ? '' : ' selected'}>엄격형</option>
+          </select>
+        </label>`).join('');
+    }
+    els.planAutoRuleList.addEventListener('change', (e) => {
+      const sel = e.target.closest('select[data-rule-type]');
+      if (!sel) return;
+      const id = sel.dataset.ruleType;
+      if (!state.settings.expiryRules) state.settings.expiryRules = {};
+      if ((sel.value === 'grace') === EXPIRY_GRACE_TYPE_IDS.has(id)) delete state.settings.expiryRules[id]; // 기본 분류와 같으면 기록하지 않음
+      else state.settings.expiryRules[id] = sel.value;
+      saveState();
+      rerender();           // 상태·경고·계획 목록 색 등 규칙을 쓰는 화면 갱신
+      applyAutoMode();      // 현재 열린 제안을 새 규칙으로 다시 계산
+      showToast(`${sensorTypeById(id)?.name || id}: ${sel.value === 'grace' ? '유예형' : '엄격형'} 규칙을 적용했습니다.`);
+    });
+
     function openAutoPlanPanel() {
       closePlanPanelsExcept('auto');
+      renderAutoRuleControls();
       els.planAutoIncludePlanned.checked = false;
       els.planAutoMode.value = 'expiry';
       els.planAutoStart.value = '';        // 손실 최소화 방식을 고를 때 기본 시작일을 다시 채운다
