@@ -3020,6 +3020,10 @@
       if (plan.partialEnd) {
         return `<span class="badge" style="background:#f5f3ff; color:#6d28d9; border-color:#c4b5fd;" title="유효기간 종료일에 사용 중 종료됩니다">부분 착용 ${plan.startDate} ~ ${end} (유효기간 종료)</span>`;
       }
+      const duringExp = expiryDuringUse(plan);
+      if (duringExp) {
+        return `<span class="badge" style="background:#f5f3ff; color:#6d28d9; border-color:#c4b5fd;" title="사용 중에 유효기간이 도래합니다">사용 중 유효기간 도래 ${plan.startDate} ~ ${end} (유효기간 ${duringExp})</span>`;
+      }
       return `<span class="badge" style="background:#eff6ff; color:var(--primary); border-color:#bfdbfe;">계획 ${plan.startDate} ~ ${end}</span>`;
     }
 
@@ -3269,6 +3273,14 @@
       if (!type) return plan.startDate;
       // 시작일 저녁 부착 기준: 종료일 = 시작일 + 사용일수 (종료일 저녁까지 사용 가능)
       return addDays(plan.startDate, type.wearDays) || plan.startDate;
+    }
+
+    // Dexcom G7 계획 중 사용 도중에 유효기간이 도래하는 계획(시작일 < 유효기간 ≤ 종료일)의 유효기간. 아니면 ''.
+    // 옵션 ④로 적용했는지(partialEnd 저장 여부)와 상관없이 "사용 중 유효기간이 끝난다"는 상태를 알아볼 수 있게 한다
+    function expiryDuringUse(plan) {
+      if (!PARTIAL_WEAR_TYPE_IDS.has(plan.typeId) || plan._archived) return '';
+      const exp = state.inventory.find(x => x.id === plan.invId)?.expiry || '';
+      return exp && plan.startDate < exp && exp <= planEndDate(plan) ? exp : '';
     }
 
     function planOverlaps(typeId, startDate, endDate, excludePlanId) {
@@ -3839,8 +3851,11 @@
         const grace = expiryGraceApplies(p.typeId, p.startDate, expiry);
         // 종료일~유효기간 간격
         const gapDays = expiry && !overEnd ? daysBetween(end, expiry) : null;
+        const duringExp = expiryDuringUse(p);
         const gapHtml = p.partialEnd
           ? `<span style="color:#7c3aed; font-size:11px;">부분 착용 — 유효기간 종료일(${p.partialEnd})에 사용 중 종료, ${daysBetween(p.startDate, p.partialEnd)}일만 착용</span>`
+          : duringExp
+          ? `<span style="color:#7c3aed; font-size:11px;">⚠ 사용 중 유효기간(${duringExp}) 도래 — ${grace ? `이후 종료일(${end})까지 사용 가능` : `이후 사용 불가, ${daysBetween(p.startDate, duringExp)}일만 착용 가능(옵션 ④로 적용하면 종료일이 유효기간으로 바뀜)`}</span>`
           : overEnd
           ? (grace
             ? `<span style="color:var(--orange); font-size:11px;">⚠ 유효기간 초과위험 (${daysBetween(expiry, end)}일, 종료일까지 사용 가능)</span>`
@@ -3849,7 +3864,7 @@
             ? `<span style="color:${gapDays <= 3 ? 'var(--orange)' : 'var(--green)'}; font-size:11px;">종료→유효기간 여유 ${gapDays}일</span>`
             : '';
         // 이미 폐기한 이력은 지난 일이므로 색으로 강조하지 않는다
-        const warnClass = p.partialEnd ? ' plan-partial' : (overEnd && !p._archived ? (grace ? ' plan-risk' : ' plan-over') : '');
+        const warnClass = p.partialEnd || duringExp ? ' plan-partial' : (overEnd && !p._archived ? (grace ? ' plan-risk' : ' plan-over') : '');
         if (p._inUse) {
           const statusBadge = p._archived
             ? `<span class="status archived" style="font-size:11px; padding:2px 6px;">폐기</span>`
@@ -3934,14 +3949,15 @@
           const expiry = item?.expiry || '';
           const overEnd = expiry && end > expiry;
           const grace = expiryGraceApplies(p.typeId, p.startDate, expiry);
-          const warnClass = p.partialEnd ? ' partial' : (overEnd ? (grace ? ' expiry-risk' : ' expiry-warn') : '');
+          const duringExp = expiryDuringUse(p);
+          const warnClass = p.partialEnd || duringExp ? ' partial' : (overEnd ? (grace ? ' expiry-risk' : ' expiry-warn') : '');
           const isStart = dateStr === p.startDate;
-          const label = isStart ? (type?.name || '-') : (p.partialEnd && dateStr === end ? '유효기간 끝' : '');
+          const label = isStart ? (type?.name || '-') : ((p.partialEnd && dateStr === end) || (duringExp && dateStr === duringExp) ? '유효기간 끝' : '');
           const opacity = isStart ? '1' : '0.7';
           const inUseExtra = p._inUse ? `outline:1px solid ${color};outline-offset:-1px;` : '';
           const styleAttr = `background:${color};opacity:${opacity};${inUseExtra}`;
           const inUseLabel = p._inUse ? (p._archived ? ' [폐기]' : (p._ended ? ' [종료 처리 필요]' : ' [사용중]')) : '';
-          const titleAttr = escapeAttr(`${type?.name || '-'}${inUseLabel} ${p.startDate}~${end}${p.partialEnd ? ' ⚠부분 착용 — 유효기간 종료일에 사용 중 종료' : (overEnd ? (grace ? ' ⚠유효기간 초과위험' : ' ⚠유효기간 초과') : '')}`);
+          const titleAttr = escapeAttr(`${type?.name || '-'}${inUseLabel} ${p.startDate}~${end}${p.partialEnd ? ' ⚠부분 착용 — 유효기간 종료일에 사용 중 종료' : duringExp ? ` ⚠사용 중 유효기간(${duringExp}) 도래` : (overEnd ? (grace ? ' ⚠유효기간 초과위험' : ' ⚠유효기간 초과') : '')}`);
           const draggable = p._inUse ? '' : 'draggable="true"';
           return `<span class="plan-bar${warnClass}" style="${styleAttr}" title="${titleAttr}" data-plan-bar="${escapeAttr(p.id)}" ${draggable}>${escapeHtml(label)}</span>`;
         }).join('');
