@@ -342,9 +342,9 @@
     </div>
     <div class="nav">
       <button class="active" data-view="dashboard">대시보드</button>
+      <button data-view="plan">사용계획</button>
       <button data-view="inventory">재고 목록</button>
       <button data-view="add">재고 추가</button>
-      <button data-view="plan">사용계획</button>
       <button data-view="worklog">작업기록</button>
       <button data-view="settings">설정</button>
     </div>
@@ -554,12 +554,6 @@
                   <label class="mini" style="display:flex; align-items:center; gap:6px;">시작일
                     <input id="planAutoStart" type="date" style="width:auto; font-size:12px; padding:6px 8px;" />
                   </label>
-                  <span style="display:inline-flex; gap:4px; flex-wrap:wrap;">
-                    <button type="button" class="btn small" data-start-shift="busy" title="현재 사용중 센서가 끝나는 날">사용중 종료일</button>
-                    <button type="button" class="btn small" data-start-shift="7" title="사용중 센서 종료일보다 1주 앞당겨 시작(중복 착용)">1주 앞당김</button>
-                    <button type="button" class="btn small" data-start-shift="14" title="사용중 센서 종료일보다 2주 앞당겨 시작(중복 착용)">2주 앞당김</button>
-                    <button type="button" class="btn small" data-start-shift="today">오늘</button>
-                  </span>
                 </div>
                 <div id="planAutoStartInfo" class="mini" style="color:#6d28d9;"></div>
               </div>
@@ -3845,17 +3839,6 @@
     els.planAutoIncludePlanned.addEventListener('change', applyAutoMode);
     els.planAutoMode.addEventListener('change', applyAutoMode);
     els.planAutoStart.addEventListener('change', () => { planAutoStartTouched = !!els.planAutoStart.value; applyAutoMode(); });
-    els.planAutoStartRow.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-start-shift]');
-      if (!btn) return;
-      const today = todayISO(), busy = latestBusyEnd(false);
-      const base = busy && busy > today ? busy : today;
-      const kind = btn.dataset.startShift;
-      const v = kind === 'today' ? today : kind === 'busy' ? base : addDays(base, -Number(kind));
-      els.planAutoStart.value = v < today ? today : v;   // 과거로는 시작할 수 없다
-      planAutoStartTouched = true;
-      applyAutoMode();
-    });
     els.planAutoTargets.addEventListener('change', refreshLossMode);
     els.planAutoCompare.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-loss-key]');
