@@ -555,7 +555,7 @@
                     <span id="planAutoTargets" style="display:inline-flex; gap:4px 10px; flex-wrap:wrap;"></span>
                   </div>
                 </div>
-                <div class="mini" style="color:var(--muted); margin-bottom:8px;">등록된 계획은 무시하고 미개봉 재고 전부를 시작일부터 공백 없이 다시 배치합니다. 유효기간 규칙을 못 지키는 센서는 일정에서 빼고(손실) 손실 개수를 최소화합니다. ① 순수 손실 최소화 ② 대상 종류를 자기 유효기간 안에서 최대한 뒤로(②′는 대상 종류 손실 허용) ③ 대상 종류를 뺀 나머지는 모두 보장하고 대상 종류가 손실 전담 ④ 이용일수 최대화(끝까지 못 쓰는 엄격형 센서도 유효기간 종료일까지 부분 착용). 옵션을 골라 일정을 확인한 뒤 적용하세요.</div>
+                <div class="mini" style="color:var(--muted); margin-bottom:8px;">등록된 계획은 무시하고 미개봉 재고 전부를 시작일부터 공백 없이 다시 배치합니다. 유효기간 규칙을 못 지키는 센서는 일정에서 빼고(손실) 손실 개수를 최소화합니다. ① 순수 손실 최소화 ② 대상 종류를 자기 유효기간 안에서 최대한 뒤로(②′는 대상 종류 손실 허용) ③ 대상 종류를 뺀 나머지는 모두 보장하고 대상 종류가 손실 전담 ④ 이용일수 최대화(Dexcom G7이 엄격형일 때, 끝까지 못 쓰는 G7도 유효기간 종료일까지 부분 착용). 옵션을 골라 일정을 확인한 뒤 적용하세요.</div>
                 <div id="planAutoCompare" style="overflow-x:auto;"></div>
               </div>
               <label id="planAutoIncludeLabel" class="mini" style="display:flex; align-items:flex-start; gap:6px; margin-bottom:8px; cursor:pointer;">
@@ -3434,9 +3434,11 @@
       return result;
     }
 
+    // 옵션 ④에서 유효기간 종료일까지 부분 착용을 허용하는 종류 (우선 Dexcom G7만, 엄격형일 때만 의미가 있다)
+    const PARTIAL_WEAR_TYPE_IDS = new Set(['dexcom_g7']);
     // 이용일수 최대화 배치(옵션 ④)의 계산: 센서 순서가 정해지면 DP로 최적의 사용/건너뜀을 구하고,
     // 정렬 기준 4가지 중 최선에서 시작해 센서를 하나씩 옮겨 보며 개선한다(소규모 전수탐색 검증에서 99.8%가 최적, 나머지는 1일 차이).
-    // jobs: { p 사용일수, last 전부 착용 가능한 마지막 시작일, e 유효기간 종료일(엄격형 부분 착용 한도), grace 유예형 }, 모두 시작일 기준 일수
+    // jobs: { p 사용일수, last 전부 착용 가능한 마지막 시작일, e 유효기간 종료일(부분 착용 한도), grace 유예형, partialOk 부분 착용 허용 종류 }, 모두 시작일 기준 일수
     function planMaxDaysFixedOrder(order) {
       const total = order.reduce((s, j) => s + j.p, 0);
       let layer = new Array(total + 1).fill(null); layer[0] = { u: 0, pc: 0 };
@@ -3452,7 +3454,7 @@
           const st = layer[t]; if (!st) continue;
           cand(t, t, st.u + 1, st.pc, 'skip');                                     // 쓰지 않음(손실)
           if (t <= j.last) cand(t, t + j.p, st.u, st.pc, 'full');                  // 전부 착용
-          else if (!j.grace && t < j.e) cand(t, j.e, st.u, st.pc + 1, 'part');     // 유효기간 종료일까지 부분 착용
+          else if (j.partialOk && t < j.e) cand(t, j.e, st.u, st.pc + 1, 'part');  // 유효기간 종료일까지 부분 착용
         }
         parents.push(par); layer = next;
       }
@@ -3497,7 +3499,8 @@
         .map(it => {
           const lastIso = latestStartForExpiry(it.typeId, it.expiry);
           return { it, typeId: it.typeId, p: sensorTypeById(it.typeId).wearDays || 0, lastIso, last: daysBetween(startDate, lastIso),
-            e: it.expiry ? (daysBetween(startDate, it.expiry) ?? 1e9) : 1e9, grace: isGraceType(it.typeId) };
+            e: it.expiry ? (daysBetween(startDate, it.expiry) ?? 1e9) : 1e9, grace: isGraceType(it.typeId),
+            partialOk: PARTIAL_WEAR_TYPE_IDS.has(it.typeId) && !isGraceType(it.typeId) };
         })
         .filter(j => j.p > 0 && j.last != null);
       const dl = j => j.last + j.p; // 보정 마감 (시작일 기준 제약을 종료일 기준 문제로 바꾼 값)
@@ -3581,7 +3584,7 @@
           lostRest.length ? `${targetName}을(를) 빼도 나머지에서 ${lostRest.length}개는 손실이라, 나머지 손실을 최소로 만든 뒤 ${targetName}을(를) 넣을 수 있는 자리에만 배치`
             : `${targetName}을(를) 제외한 종류는 모두 사용`));
       }
-      // ④ 이용일수 최대화: 유효기간 안에 끝까지 못 쓰는 엄격형 센서도 착용 중 유효기간 종료일까지는 사용(부분 착용)하고,
+      // ④ 이용일수 최대화: 유효기간 안에 끝까지 못 쓰는 센서(우선 엄격형 G7만)도 착용 중 유효기간 종료일까지는 사용(부분 착용)하고,
       // 총 이용일수가 가장 길어지도록 배치한다. 센서를 통째로 손실시키는 것보다 일부라도 쓰는 편이 낫다는 관점.
       const r4 = solveMaxDays(jobs);
       const sched4 = [], lost4 = [];
@@ -3591,8 +3594,8 @@
         const full = a.act === 'full', endOff = full ? a.to : j.e;
         sched4.push({ j, start: addDays(startDate, a.from), end: addDays(startDate, endOff), margin: j.last - a.from, partial: !full, wornDays: endOff - a.from });
       });
-      options.push({ key: '4', label: '④ 이용일수 최대화 (유효기간까지 부분 착용 허용)', applicable: true,
-        note: '유효기간 안에 끝까지 못 쓰는 엄격형 센서도 유효기간 종료일까지는 사용', sched: sched4, lost: lost4,
+      options.push({ key: '4', label: '④ 이용일수 최대화 (G7 부분 착용 허용)', applicable: true,
+        note: '유효기간 안에 끝까지 못 쓰는 Dexcom G7(엄격형)은 유효기간 종료일까지는 사용', sched: sched4, lost: lost4,
         usable: sched4.length, partialCount: sched4.filter(x => x.partial).length, days: r4.days, endDate: addDays(startDate, r4.days) });
       return { startDate, targetTypeIds: [...targetIds], total: jobs.length, options };
     }
