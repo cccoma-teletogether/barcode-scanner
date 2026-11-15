@@ -3516,20 +3516,18 @@
       const r = planAutoLossResult;
       if (!r) { els.planAutoCompare.innerHTML = ''; return; }
       if (!r.total) { els.planAutoCompare.innerHTML = '<div class="mini">배치할 미개봉 재고가 없습니다.</div>'; return; }
-      els.planAutoCompare.innerHTML = `
-        <table style="width:100%; min-width:430px; border-collapse:collapse; font-size:12px;">
-          <thead><tr style="text-align:left; color:var(--muted);"><th style="padding:4px 6px;">옵션</th><th style="padding:4px 6px;">손실</th><th style="padding:4px 6px;">손실 항목</th><th style="padding:4px 6px;">마지막 종료일</th><th></th></tr></thead>
-          <tbody>${r.options.map(o => `
-            <tr style="border-top:1px solid var(--line); ${o.key === planAutoLossKey ? 'background:#eff6ff;' : ''}">
-              <td style="padding:6px;">${escapeHtml(o.label)}</td>
-              ${o.applicable
-                ? `<td style="padding:6px; white-space:nowrap;"><strong>${o.lost.length}개</strong> <span class="mini">(사용 ${o.usable})</span></td>
-                   <td style="padding:6px;">${escapeHtml(lossSummaryText(o.lost))}</td>
-                   <td style="padding:6px; white-space:nowrap;">${o.endDate}</td>`
-                : `<td colspan="3" style="padding:6px; color:var(--muted);">적용 불가 — ${escapeHtml(o.reason)}</td>`}
-              <td style="padding:6px;"><button type="button" class="btn small" style="white-space:nowrap;" data-loss-key="${o.key}" ${o.applicable ? '' : 'disabled'}>${o.key === planAutoLossKey ? '선택됨' : '일정 보기'}</button></td>
-            </tr>`).join('')}</tbody>
-        </table>`;
+      // 좁은 화면에서도 버튼이 가려지지 않도록 표 대신 옵션별 카드로 보여 준다
+      els.planAutoCompare.innerHTML = `<div class="list" style="gap:6px;">${r.options.map(o => `
+        <div class="item" style="padding:8px 10px; ${o.key === planAutoLossKey ? 'background:#eff6ff; border-color:var(--primary);' : ''}">
+          <div class="stack" style="justify-content:space-between; align-items:center; flex-wrap:nowrap; gap:8px;">
+            <strong style="font-size:13px;">${escapeHtml(o.label)}</strong>
+            <button type="button" class="btn small" style="white-space:nowrap; flex-shrink:0;" data-loss-key="${o.key}" ${o.applicable ? '' : 'disabled'}>${o.key === planAutoLossKey ? '선택됨' : '일정 보기'}</button>
+          </div>
+          ${o.applicable ? `
+            <div class="meta"><strong>손실 ${o.lost.length}개</strong> (사용 ${o.usable}개) · 마지막 종료 ${o.endDate}</div>
+            <div class="meta">손실 항목: ${escapeHtml(lossSummaryText(o.lost))}</div>`
+            : `<div class="meta" style="color:var(--muted);">적용 불가 — ${escapeHtml(o.reason)}</div>`}
+        </div>`).join('')}</div>`;
     }
 
     function selectLossOption(key) {
