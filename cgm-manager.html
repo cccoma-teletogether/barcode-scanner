@@ -134,7 +134,6 @@
     .plan-bar.expiry-warn { outline: 2px solid var(--red); outline-offset: -1px; }
     .plan-bar.expiry-risk { outline: 2px solid var(--orange); outline-offset: -1px; }
     /* 부분 착용: 유효기간 종료일에 사용 중 끝나는 계획 */
-    .plan-bar.parallel { outline: 2px solid #0891b2; outline-offset: -1px; }
     .plan-bar.partial { outline: 2px dashed #7c3aed; outline-offset: -1px;
       background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.45) 0 4px, transparent 4px 8px); }
     .cal-day.drag-over { background: #dbeafe; border-color: var(--primary); }
@@ -146,7 +145,6 @@
     /* 유효기간 초과위험(주황) / 초과(빨강) 계획은 배경색과 왼쪽 띠로 구분 */
     .plan-list-item.plan-risk { background: #fff7ed; border-color: #fed7aa; border-left: 4px solid var(--orange); }
     .plan-list-item.plan-over { background: #fef2f2; border-color: #fecaca; border-left: 4px solid var(--red); }
-    .plan-list-item.plan-parallel { background: #ecfeff; border-color: #a5f3fc; border-left: 4px solid #0891b2; }
     .plan-list-item.plan-partial { background: #f5f3ff; border-color: #ddd6fe; border-left: 4px solid #8b5cf6; }
     .plan-list-item.plan-selected {
       border-color: var(--primary); box-shadow: 0 0 0 2px #bfdbfe; background: #eff6ff;
@@ -565,11 +563,7 @@
                     <span id="planAutoTargets" style="display:inline-flex; gap:4px 10px; flex-wrap:wrap;"></span>
                   </div>
                 </div>
-                <label class="mini" style="display:flex; align-items:center; gap:6px; margin-bottom:6px; cursor:pointer;">
-                  <input type="checkbox" id="planAutoParallel" style="width:auto;" />
-                  손실·미사용 센서를 병행 착용으로 살리기(일정 중간에 다른 센서와 동시에 착용)
-                </label>
-                <div class="mini" style="color:var(--muted); margin-bottom:8px;">등록된 계획은 무시하고 미개봉 재고 전부를 시작일부터 공백 없이 다시 배치합니다. 유효기간 규칙을 못 지키는 센서는 일정에서 빼고(손실) 손실 개수를 최소화합니다. ① 순수 손실 최소화 ② 대상 종류를 자기 유효기간 안에서 최대한 뒤로(②′는 대상 종류 손실 허용) ③ 대상 종류를 뺀 나머지는 모두 보장하고 대상 종류가 손실 전담 ④ 이용일수 최대화(Dexcom G7이 엄격형일 때, 끝까지 못 쓰는 G7도 유효기간 종료일까지 부분 착용) 위 체크박스를 켜면 각 옵션에서 손실·미사용으로 빠진 센서를 일정 중간에 병행 착용(동시 착용)으로 살립니다. 옵션을 골라 일정을 확인한 뒤 적용하세요.</div>
+                <div class="mini" style="color:var(--muted); margin-bottom:8px;">등록된 계획은 무시하고 미개봉 재고 전부를 시작일부터 공백 없이 다시 배치합니다. 유효기간 규칙을 못 지키는 센서는 일정에서 빼고(손실) 손실 개수를 최소화합니다. ① 순수 손실 최소화 ② 대상 종류를 자기 유효기간 안에서 최대한 뒤로(②′는 대상 종류 손실 허용) ③ 대상 종류를 뺀 나머지는 모두 보장하고 대상 종류가 손실 전담 ④ 이용일수 최대화(Dexcom G7이 엄격형일 때, 끝까지 못 쓰는 G7도 유효기간 종료일까지 부분 착용) 옵션을 골라 일정을 확인한 뒤 적용하세요.</div>
                 <div id="planAutoCompare" style="overflow-x:auto;"></div>
               </div>
               <label id="planAutoIncludeLabel" class="mini" style="display:flex; align-items:flex-start; gap:6px; margin-bottom:8px; cursor:pointer;">
@@ -1041,7 +1035,6 @@
       planAutoLossControls: document.getElementById('planAutoLossControls'),
       planAutoStart: document.getElementById('planAutoStart'),
       planAutoTargets: document.getElementById('planAutoTargets'),
-      planAutoParallel: document.getElementById('planAutoParallel'),
       planAutoCompare: document.getElementById('planAutoCompare'),
       planAutoIncludeLabel: document.getElementById('planAutoIncludeLabel'),
       planAutoCloseBtn: document.getElementById('planAutoCloseBtn'),
@@ -3524,7 +3517,7 @@
     // 미개봉 재고 전부를 시작일부터 공백 없이 이어 배치한다. 종류별 마지막 시작일(latestStartForExpiry)을 못 지키는
     // 센서는 손실로 일정에서 빼고, 손실 개수가 최소가 되도록 Moore-Hodgson 방식으로 고른다.
     // 옵션 ① 순수 최소화 ② 대상 종류를 자기 유효기간 안에서 최대한 뒤로(②′는 대상 종류 손실 허용) ③ 대상 종류가 손실 전담
-    function computeLossOptions(startDate, targetTypeIds, parallelOn) {
+    function computeLossOptions(startDate, targetTypeIds) {
       const typeIdx = id => { const i = state.sensorTypes.findIndex(t => t.id === id); return i < 0 ? 999 : i; };
       const jobs = state.inventory
         .filter(it => !it.openedAt && !it.archived && sensorTypeById(it.typeId))
@@ -3629,35 +3622,6 @@
       options.push({ key: '4', label: '④ 이용일수 최대화 (G7 부분 착용 허용)', applicable: true,
         note: '유효기간 안에 끝까지 못 쓰는 Dexcom G7(엄격형)은 유효기간 종료일까지는 사용', sched: sched4, lost: lost4,
         usable: sched4.length, partialCount: sched4.filter(x => x.partial).length, days: r4.days, endDate: addDays(startDate, r4.days) });
-      // 손실 센서 병행 착용(parallelOn): 각 옵션의 일정은 그대로 두고, 그 옵션에서 손실·미사용으로 빠진 센서만 일정 중간에 끼워
-      // 동시에 2개를 착용해 살린다. 병행 센서끼리는 겹치지 않게 놓고(Moore-Hodgson으로 가능한 최대 개수),
-      // 각 센서는 마지막 시작일에 가깝게(가능한 한 늦게) 시작해 겹침을 줄인다. 병행으로도 못 맞추는 센서만 손실로 남는다.
-      if (parallelOn) options.forEach(o => {
-        if (!o.applicable || !o.lost.length) return;
-        const offs = x => ({ ...x, startOff: daysBetween(startDate, x.start), endOff: daysBetween(startDate, x.end) });
-        const chain = o.sched.map(offs), chainEnd = chain.length ? Math.max(...chain.map(x => x.endOff)) : 0;
-        const mr = moore(o.lost);
-        const fit = edf(mr.kept), stillLost = [...mr.lost];
-        const par = []; let cur = 0;
-        fit.forEach(j => { par.push({ j, s: cur }); cur += j.p; });
-        let limit = Infinity;
-        for (let i = par.length - 1; i >= 0; i--) {
-          const j = par[i].j, end = Math.min(j.last + j.p, limit);
-          par[i].s = end - j.p; limit = par[i].s;
-        }
-        const parSched = par.map(x => {
-          const st = x.s, en = x.s + x.j.p, ov = Math.max(0, Math.min(en, chainEnd) - Math.max(st, 0));
-          return { j: x.j, start: addDays(startDate, st), end: addDays(startDate, en), margin: x.j.last - st, parallel: true, overlapPrev: ov, startOff: st, endOff: en };
-        });
-        const all = [...chain, ...parSched].sort((x, y) => x.startOff - y.startOff || x.endOff - y.endOff);
-        const spanEnd = all.length ? Math.max(...all.map(x => x.endOff)) : 0;
-        const before = o.lost.length;
-        o.label += ' + 병행 착용';
-        o.note = `${o.note ? o.note + ' · ' : ''}손실·미사용 ${before}개 중 ${parSched.length}개를 일정 중간에 겹쳐(동시 착용) 사용${stillLost.length ? ` — ${stillLost.length}개는 병행으로도 불가` : ''}`;
-        o.sched = all; o.lost = stillLost; o.usable = all.length;
-        o.overlapTotal = parSched.reduce((sum, x) => sum + x.overlapPrev, 0); o.overlapCount = parSched.length;
-        o.days = spanEnd; o.endDate = addDays(startDate, spanEnd);
-      });
       return { startDate, targetTypeIds: [...targetIds], total: jobs.length, options };
     }
 
@@ -3680,9 +3644,9 @@
             <button type="button" class="btn small" style="white-space:nowrap; flex-shrink:0;" data-loss-key="${o.key}" ${o.applicable ? '' : 'disabled'}>${o.key === planAutoLossKey ? '선택됨' : '일정 보기'}</button>
           </div>
           ${o.applicable ? `
-            <div class="meta"><strong>손실 ${o.lost.length}개</strong> (사용 ${o.usable}개${o.partialCount ? `, 부분 착용 ${o.partialCount}개` : ''}) · 이용 ${o.days}일${o.overlapTotal != null ? ` · 병행 착용 ${o.overlapCount}개 · 동시 착용 총 ${o.overlapTotal}일` : ''} · 마지막 종료 ${o.endDate}</div>
+            <div class="meta"><strong>손실 ${o.lost.length}개</strong> (사용 ${o.usable}개${o.partialCount ? `, 부분 착용 ${o.partialCount}개` : ''}) · 이용 ${o.days}일 · 마지막 종료 ${o.endDate}</div>
             <div class="meta">${o.key === '4' ? '미사용' : '손실'} 항목: ${escapeHtml(lossSummaryText(o.lost))}</div>
-            ${o.overlapTotal != null ? `<div class="meta" style="color:#6d28d9;">${escapeHtml(o.note)}</div>` : ''}`
+`
             : `<div class="meta" style="color:var(--muted);">적용 불가 — ${escapeHtml(o.reason)}</div>`}
         </div>`).join('')}</div>`;
     }
@@ -3697,7 +3661,7 @@
         const type = sensorTypeById(s.j.typeId), ex = planned.get(s.j.it.id);
         return { invId: s.j.it.id, typeId: s.j.typeId, typeName: type?.name || s.j.typeId, serial: s.j.it.serial, lot: s.j.it.lot,
           expiry: s.j.it.expiry, startDate: s.start, endDate: s.end, planId: ex?.id || null, prevStart: ex?.startDate || null,
-          warning: false, margin: s.margin, partialEnd: s.partial ? s.end : null, wornDays: s.partial ? s.wornDays : null, overlapPrev: s.overlapPrev || 0, parallel: !!s.parallel };
+          warning: false, margin: s.margin, partialEnd: s.partial ? s.end : null, wornDays: s.partial ? s.wornDays : null };
       }) : [];
       planAutoLost = opt.applicable ? opt.lost.map(j => ({
         invId: j.it.id, typeName: sensorTypeById(j.typeId)?.name || j.typeId, serial: j.it.serial, expiry: j.it.expiry,
@@ -3714,7 +3678,7 @@
     function refreshLossMode() {
       const start = els.planAutoStart.value;
       if (!start) { planAutoLossResult = null; planAutoProposals = []; planAutoLost = []; renderLossCompare(); renderAutoPlanList(); return; }
-      planAutoLossResult = computeLossOptions(start, selectedTargetIds(), !!els.planAutoParallel.checked);
+      planAutoLossResult = computeLossOptions(start, selectedTargetIds());
       selectLossOption('1');
     }
 
@@ -3782,7 +3746,7 @@
       const warnCount = planAutoProposals.filter(p => p.warning).length;
       const lastEnd = planAutoProposals.length ? planAutoProposals[planAutoProposals.length - 1].endDate : '';
       els.planAutoSummary.textContent = lossMode
-        ? `사용 ${planAutoProposals.length}건 · 손실 ${planAutoLost.length}건${(() => { const o = planAutoLossResult?.options.find(x => x.key === planAutoLossKey); return o ? ` · 이용 ${o.days}일${o.overlapTotal != null ? ` · 중복 착용 ${o.overlapTotal}일` : ''}` : ''; })()}${lastEnd ? ` · 마지막 종료 ${lastEnd}` : ''}`
+        ? `사용 ${planAutoProposals.length}건 · 손실 ${planAutoLost.length}건${(() => { const o = planAutoLossResult?.options.find(x => x.key === planAutoLossKey); return o ? ` · 이용 ${o.days}일` : ''; })()}${lastEnd ? ` · 마지막 종료 ${lastEnd}` : ''}`
         : `${planAutoProposals.length}건${warnCount ? ` · ⚠ ${warnCount}건 확인 필요` : ''}`;
       els.planAutoList.innerHTML = planAutoProposals.map((p, idx) => {
         const type = sensorTypeById(p.typeId);
@@ -3793,7 +3757,6 @@
             <div style="flex:1;">
               <div class="name">${escapeHtml(p.typeName)}${p.serial ? ` · S/N ${escapeHtml(p.serial)}` : ''}</div>
               <div class="meta">${p.startDate} ~ ${p.endDate} (유효기간 ${fmtDate(p.expiry) || '-'})${p.margin != null ? ` · 여유 ${p.margin}일` : ''}</div>
-              ${p.parallel ? `<div class="meta" style="color:#6d28d9;">손실 확정 센서를 병행 착용 — 다른 센서와 ${p.overlapPrev}일 동시 착용</div>` : ''}
               ${p.partialEnd ? `<div class="meta" style="color:#7c3aed;">부분 착용: 유효기간 종료일(${p.endDate})까지 ${p.wornDays}일만 착용</div>` : ''}
               ${p.planId ? `<div class="meta" style="color:var(--primary);">기존 계획 ${p.prevStart}${p.prevStart === p.startDate ? ' (변경 없음)' : ` → ${p.startDate}`}</div>` : ''}
               ${p.warning ? `<div class="meta" style="color:var(--red);">⚠ 이 순서대로면 유효기간 규칙상 사용할 수 없습니다(${isGraceType(p.typeId) ? '유효기간 하루 전까지 시작해야 함' : '사용종료일이 유효기간을 넘음'}). 시작일을 직접 조정해주세요.</div>` : ''}
@@ -3848,7 +3811,6 @@
     els.planAutoMode.addEventListener('change', applyAutoMode);
     els.planAutoStart.addEventListener('change', () => { planAutoStartTouched = !!els.planAutoStart.value; applyAutoMode(); });
     els.planAutoTargets.addEventListener('change', refreshLossMode);
-    els.planAutoParallel.addEventListener('change', refreshLossMode);
     els.planAutoCompare.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-loss-key]');
       if (btn && !btn.disabled) selectLossOption(btn.dataset.lossKey);
@@ -3929,8 +3891,6 @@
             : '';
         // 이미 폐기한 이력은 지난 일이므로 색으로 강조하지 않는다
         const warnClass = p.partialEnd || duringExp ? ' plan-partial' : (overEnd && !p._archived ? (grace ? ' plan-risk' : ' plan-over') : '');
-        const parallelHtml = p.parallel && !p._archived ? ` <span style="color:#0e7490; font-size:11px;">⧉ 손실 센서 병행 착용(다른 센서와 동시 착용)</span>` : '';
-        const parallelClass = p.parallel && !p._archived ? ' plan-parallel' : '';
         if (p._inUse) {
           const statusBadge = p._archived
             ? `<span class="status archived" style="font-size:11px; padding:2px 6px;">폐기</span>`
@@ -3938,22 +3898,22 @@
               ? `<span class="status shelf_warning" style="font-size:11px; padding:2px 6px;">종료 처리 필요</span>`
               : `<span class="status in_use" style="font-size:11px; padding:2px 6px;">사용중</span>`;
           return `
-            <div class="plan-list-item${warnClass}${parallelClass}" data-plan-id="${escapeAttr(p.id)}">
+            <div class="plan-list-item${warnClass}" data-plan-id="${escapeAttr(p.id)}">
               <span class="plan-dot" style="background:${color}; outline:2px solid ${color}; outline-offset:1px;"></span>
               <div>
                 <div style="font-weight:700;">${escapeHtml(type?.name || '-')} ${statusBadge}</div>
-                <div class="meta">${p.startDate} ~ ${end} ${gapHtml}${parallelHtml}</div>
+                <div class="meta">${p.startDate} ~ ${end} ${gapHtml}</div>
                 <div class="meta">${item?.serial ? `S/N ${escapeHtml(item.serial)}` : '일련번호 없음'} · 유효기간 ${fmtDate(item?.expiry)}</div>
               </div>
               <span class="meta" style="white-space:nowrap;">실제 사용</span>
             </div>`;
         }
         return `
-          <div class="plan-list-item${warnClass}${parallelClass}" data-plan-id="${escapeAttr(p.id)}">
+          <div class="plan-list-item${warnClass}" data-plan-id="${escapeAttr(p.id)}">
             <span class="plan-dot" style="background:${color};"></span>
             <div style="flex:1;">
               <div style="font-weight:700;">${escapeHtml(type?.name || '-')}</div>
-              <div class="meta">${p.startDate} ~ ${end} ${gapHtml}${parallelHtml}</div>
+              <div class="meta">${p.startDate} ~ ${end} ${gapHtml}</div>
               <div class="meta">${item?.serial ? `S/N ${escapeHtml(item.serial)}` : '일련번호 없음'} · 유효기간 ${fmtDate(item?.expiry)}</div>
             </div>
             <div class="stack" style="flex-wrap:nowrap;">
@@ -4016,7 +3976,7 @@
           const overEnd = expiry && end > expiry;
           const grace = expiryGraceApplies(p.typeId, p.startDate, expiry);
           const duringExp = expiryDuringUse(p);
-          const warnClass = p.partialEnd || duringExp ? ' partial' : (p.parallel ? ' parallel' : (overEnd ? (grace ? ' expiry-risk' : ' expiry-warn') : ''));
+          const warnClass = p.partialEnd || duringExp ? ' partial' : (overEnd ? (grace ? ' expiry-risk' : ' expiry-warn') : '');
           const isStart = dateStr === p.startDate;
           const label = isStart ? (type?.name || '-') : ((p.partialEnd && dateStr === end) || (duringExp && dateStr === duringExp) ? '유효기간 끝' : '');
           const opacity = isStart ? '1' : '0.7';
@@ -4244,7 +4204,6 @@
           const changed = existing.startDate !== p.startDate;
           if (changed) { existing.startDate = p.startDate; moved++; }
           if (changed || lossApply) { if (p.partialEnd) existing.partialEnd = p.partialEnd; else delete existing.partialEnd; }
-          if (lossApply) { if (p.parallel) existing.parallel = true; else delete existing.parallel; }
           return;
         }
         state.plans.push({
@@ -4253,7 +4212,6 @@
           typeId: p.typeId,
           startDate: p.startDate,
           ...(p.partialEnd ? { partialEnd: p.partialEnd } : {}),
-          ...(p.parallel ? { parallel: true } : {}),
           createdAt: new Date().toISOString()
         });
         added++;
