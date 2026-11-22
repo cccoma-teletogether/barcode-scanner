@@ -163,6 +163,9 @@
     /* 부분 착용: 유효기간 종료일에 사용 중 끝나는 계획 */
     .plan-bar.partial { outline: 2px dashed #7c3aed; outline-offset: -1px;
       background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.45) 0 4px, transparent 4px 8px); }
+    .plan-bar, button[data-plan-inv] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    .touch-drag-ghost { position: fixed; z-index: 10000; transform: translateX(-50%); pointer-events: none; padding: 4px 10px; border-radius: 999px;
+      background: var(--primary); color: #fff; font-size: 12px; font-weight: 700; box-shadow: 0 6px 18px rgba(0,0,0,.3); max-width: 70vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cal-day.drag-over { background: var(--t-blue2); border-color: var(--primary); }
     .plan-list-item {
       display: grid; grid-template-columns: 10px 1fr auto; align-items: center;
@@ -4596,6 +4599,11 @@
       const sensorInvId = dragSensorInvId;
       const planId = dragPlanId;
       resetDragState();
+      handleCalendarDrop(cell, sensorInvId, planId);
+    });
+
+    // 마우스 드롭과 터치(길게 눌러 끌기) 드롭이 함께 쓰는 처리
+    function handleCalendarDrop(cell, sensorInvId, planId) {
       if (!cell) return;
       const newStart = cell.dataset.date;
 
@@ -4636,7 +4644,98 @@
         saveState();
         rerender();
       }
+    }
+
+    // ── 터치 드래그(모바일) ─────────────────────────────────────────────────
+    // HTML5 드래그는 터치 화면에서 동작하지 않으므로, 센서 목록의 버튼이나 달력의 계획 막대를 **길게 누른 뒤** 끌어서 놓는다.
+    // 짧게 누르거나 길게 누르기 전에 손가락이 움직이면 평소처럼 선택·스크롤이 된다.
+    const TOUCH_HOLD_MS = 350, TOUCH_MOVE_TOL = 10;
+    const touchDrag = { timer: null, active: false, sx: 0, sy: 0, x: 0, y: 0, el: null, sensorInvId: null, planId: null, ghost: null, scroller: null, wasDraggable: false };
+
+    function touchDragCleanup() {
+      clearTimeout(touchDrag.timer); touchDrag.timer = null;
+      clearInterval(touchDrag.scroller); touchDrag.scroller = null;
+      if (touchDrag.ghost) { touchDrag.ghost.remove(); touchDrag.ghost = null; }
+      if (touchDrag.el) {
+        touchDrag.el.classList.remove('dragging');
+        if (touchDrag.wasDraggable) touchDrag.el.setAttribute('draggable', 'true');
+      }
+      document.querySelectorAll('.cal-day.drag-over').forEach(el => el.classList.remove('drag-over'));
+      touchDrag.active = false; touchDrag.el = null; touchDrag.sensorInvId = null; touchDrag.planId = null;
+    }
+
+    function touchDragHover() {
+      document.querySelectorAll('.cal-day.drag-over').forEach(el => el.classList.remove('drag-over'));
+      if (touchDrag.ghost) { touchDrag.ghost.style.left = touchDrag.x + 'px'; touchDrag.ghost.style.top = (touchDrag.y - 36) + 'px'; }
+      const under = document.elementFromPoint(touchDrag.x, touchDrag.y);
+      const cell = under && under.closest ? under.closest('.cal-day[data-date]') : null;
+      if (cell) cell.classList.add('drag-over');
+      return cell;
+    }
+
+    function touchDragStart(el, sensorInvId, planId, label) {
+      touchDrag.active = true; touchDrag.sensorInvId = sensorInvId; touchDrag.planId = planId;
+      el.classList.add('dragging');
+      const g = document.createElement('div');
+      g.className = 'touch-drag-ghost'; g.textContent = label;
+      document.body.appendChild(g); touchDrag.ghost = g;
+      if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
+      touchDragHover();
+      // 화면 위·아래 가장자리에 손가락을 대고 있으면 자동으로 스크롤
+      touchDrag.scroller = setInterval(() => {
+        const edge = 70, h = window.innerHeight;
+        if (touchDrag.y < edge) window.scrollBy(0, -14); else if (touchDrag.y > h - edge) window.scrollBy(0, 14); else return;
+        touchDragHover();
+      }, 16);
+    }
+
+    function onTouchHoldStart(e, container) {
+      if (e.touches.length !== 1) return;
+      const bar = e.target.closest('[data-plan-bar]');
+      const btn = !bar ? e.target.closest('button[data-plan-inv]') : null;
+      const el = bar || btn;
+      if (!el || !container.contains(el) || (btn && btn.disabled)) return;
+      if (bar && bar.getAttribute('draggable') !== 'true') return;   // 실제 사용(가상 계획)은 끌 수 없다
+      touchDragCleanup();
+      const t = e.touches[0];
+      touchDrag.sx = touchDrag.x = t.clientX; touchDrag.sy = touchDrag.y = t.clientY; touchDrag.el = el;
+      touchDrag.wasDraggable = el.getAttribute('draggable') === 'true';
+      el.setAttribute('draggable', 'false');   // 길게 눌렀을 때 브라우저 기본 드래그가 끼어들지 않게 한다
+      const sensorInvId = btn ? btn.dataset.planInv : null, planId = bar ? bar.dataset.planBar : null;
+      const label = bar ? (bar.textContent.trim() || '계획') : btn.textContent.trim().split(/\s{2,}|\n/)[0].slice(0, 24);
+      touchDrag.timer = setTimeout(() => { touchDrag.timer = null; touchDragStart(el, sensorInvId, planId, label); }, TOUCH_HOLD_MS);
+    }
+
+    [els.calGrid, els.planSensorList].forEach(container => {
+      container.addEventListener('touchstart', (e) => onTouchHoldStart(e, container), { passive: true });
     });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!touchDrag.el) return;
+      const t = e.touches[0];
+      touchDrag.x = t.clientX; touchDrag.y = t.clientY;
+      if (!touchDrag.active) {
+        // 길게 누르기 전에 움직이면 스크롤로 보고 취소
+        if (Math.hypot(t.clientX - touchDrag.sx, t.clientY - touchDrag.sy) > TOUCH_MOVE_TOL) touchDragCleanup();
+        return;
+      }
+      e.preventDefault();   // 끄는 동안 화면이 스크롤되지 않게 한다
+      touchDragHover();
+    }, { passive: false });
+
+    document.addEventListener('touchend', (e) => {
+      if (!touchDrag.el) return;
+      if (!touchDrag.active) { touchDragCleanup(); return; }
+      e.preventDefault();   // 뒤따르는 클릭(선택)을 막는다
+      const cell = touchDragHover();
+      const sensorInvId = touchDrag.sensorInvId, planId = touchDrag.planId;
+      touchDragCleanup();
+      handleCalendarDrop(cell, sensorInvId, planId);
+    }, { passive: false });
+
+    document.addEventListener('touchcancel', () => { if (touchDrag.el) touchDragCleanup(); });
+    // 길게 누를 때 뜨는 컨텍스트 메뉴·텍스트 선택을 막는다
+    document.addEventListener('contextmenu', (e) => { if (touchDrag.active || touchDrag.timer) e.preventDefault(); });
 
     // ── 대시보드 ───────────────────────────────────────────────────────────
 
