@@ -622,7 +622,7 @@
                 </label>
                 <label class="mini" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
                   <input id="planEditShiftToggle" type="checkbox" style="width:15px; height:15px;" />
-                  이후 같은 종류 계획도 함께 밀기
+                  이후 계획도 모두 함께 밀기
                 </label>
                 <div class="mini" id="planEditShiftInfo" style="color:var(--primary);"></div>
                 <div class="form-actions" style="padding-top:4px;">
@@ -3350,11 +3350,10 @@
       });
     }
 
-    // 기준 계획 이후(같은 종류, 시작일 >= 기준)의 계획들을 delta일만큼 밀기
-    function shiftPlansAfter(typeId, fromDate, deltaDay, excludePlanId) {
+    // 기준 계획 이후(종류 무관, 시작일 >= 기준)의 모든 계획을 delta일만큼 밀기
+    function shiftPlansAfter(fromDate, deltaDay, excludePlanId) {
       state.plans = state.plans.map(p => {
         if (p.id === excludePlanId) return p;
-        if (p.typeId !== typeId) return p;
         if (p.startDate < fromDate) return p;
         const moved = { ...p, startDate: addDays(p.startDate, deltaDay) };
         delete moved.partialEnd; // 시작일이 바뀌었으니 부분 착용 종료일은 더 이상 유효하지 않다
@@ -4367,10 +4366,10 @@
         els.planEditShiftInfo.textContent = '이 계획만 이동합니다 (다른 계획은 그대로 유지).';
         return;
       }
-      // 같은 종류 이후 계획 수
-      const affected = state.plans.filter(p => p.id !== planEditingPlanId && p.typeId === plan.typeId && p.startDate >= plan.startDate).length;
+      // 이후 계획 수(종류 무관)
+      const affected = state.plans.filter(p => p.id !== planEditingPlanId && p.startDate >= plan.startDate).length;
       const dir = delta > 0 ? `+${delta}일 뒤로` : `${delta}일 앞으로`;
-      els.planEditShiftInfo.textContent = `이 계획 포함, 같은 종류 이후 계획 ${affected + 1}건이 ${dir} 밀립니다.`;
+      els.planEditShiftInfo.textContent = `이 계획 포함, 이후 계획 ${affected + 1}건이 ${dir} 밀립니다.`;
     }
 
     function closePlanEdit() {
@@ -4416,8 +4415,8 @@
       const snapshot = state.plans.map(p => ({ ...p }));
       const lateBefore = latePlanIds();
       if (els.planEditShiftToggle.checked) {
-        // 이 계획 포함, 같은 종류 이후 계획 모두 밀기
-        shiftPlansAfter(plan.typeId, plan.startDate, delta, null);
+        // 이 계획 포함, 이후 계획(종류 무관) 모두 밀기
+        shiftPlansAfter(plan.startDate, delta, null);
         const movedPlan = state.plans.find(p => p.id === planEditingPlanId);
         if (movedPlan) {
           const movedEnd = planEndDate(movedPlan);
@@ -4426,7 +4425,7 @@
             const names = overlapAfterShift.map(p => `${p.startDate}~${planEndDate(p)}`).join(', ');
             if (!confirm(`이동 후 같은 종류 계획과 2일 이상 겹칩니다.\n겹치는 구간: ${names}\n계속 저장할까요?`)) {
               // 롤백
-              shiftPlansAfter(plan.typeId, movedPlan.startDate, -delta, null);
+              shiftPlansAfter(movedPlan.startDate, -delta, null);
               return;
             }
           }
@@ -4626,7 +4625,7 @@
         const delta = daysBetween(plan.startDate, newStart);
         const snapshot = state.plans.map(p => ({ ...p }));
         const lateBefore = latePlanIds();
-        shiftPlansAfter(plan.typeId, plan.startDate, delta, null);
+        shiftPlansAfter(plan.startDate, delta, null);
         if (!confirmNewLatePlans(lateBefore)) { state.plans = snapshot; rerender(); return; }
         saveState();
         rerender();
