@@ -28,7 +28,30 @@
       --gray: #64748b;
       --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
       --radius: 8px;
+      --t-blue: #eff6ff; --t-blue2: #dbeafe; --t-red: #fef2f2; --t-red2: #fee2e2; --t-orange: #fff7ed; --t-orange2: #ffedd5;
+      --t-purple: #f5f3ff; --t-slate: #f1f5f9; --t-slate2: #e2e8f0; --t-green: #dcfce7; --t-sky: #e0f2fe;
+      --topbar: rgba(243, 246, 251, 0.92); --other-month: #b0b8c9;
+      color-scheme: light;
     }
+    :root[data-theme="dark"] {
+      --bg: #0b1220; --panel: #131c2e; --panel-2: #192339; --text: #e2e8f0; --muted: #94a3b8; --line: #2a3750;
+      --primary: #60a5fa; --green: #4ade80; --orange: #fbbf24; --red: #f87171; --gray: #94a3b8;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      --t-blue: #172a4d; --t-blue2: #1e3a6b; --t-red: #3a1a1f; --t-red2: #4a1d22; --t-orange: #3a2a12; --t-orange2: #45310f;
+      --t-purple: #2a2150; --t-slate: #1c2740; --t-slate2: #2a3750; --t-green: #12351f; --t-sky: #0f3047;
+      --topbar: rgba(11, 18, 32, 0.92); --other-month: #55627a;
+      color-scheme: dark;
+    }
+    :root[data-theme="dark"] .status.ready { color: #7dd3fc; border-color: #155e75; }
+    :root[data-theme="dark"] .status.in_use { color: #86efac; border-color: #166534; }
+    :root[data-theme="dark"] .status.warning, :root[data-theme="dark"] .status.shelf_warning { color: #fcd34d; border-color: #854d0e; }
+    :root[data-theme="dark"] .status.expired { color: #fca5a5; border-color: #991b1b; }
+    :root[data-theme="dark"] .status.archived { color: #cbd5e1; border-color: #475569; }
+    :root[data-theme="dark"] .btn.danger { border-color: #7f1d1d; }
+    :root[data-theme="dark"] .plan-list-item.plan-risk { border-color: #854d0e; }
+    :root[data-theme="dark"] .plan-list-item.plan-over, :root[data-theme="dark"] .plan-overlap-warn { border-color: #7f1d1d; }
+    :root[data-theme="dark"] .plan-list-item.plan-partial { border-color: #4c3a8a; }
+    :root[data-theme="dark"] .toast.info { background: #334155; }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     button, input, select, textarea { font: inherit; }
@@ -37,7 +60,7 @@
     .topbar {
       position: sticky; top: 0; z-index: 20;
       display: flex; align-items: center; justify-content: space-between;
-      gap: 12px; padding: 12px 16px; background: rgba(243, 246, 251, 0.92); backdrop-filter: blur(10px);
+      gap: 12px; padding: 12px 16px; background: var(--topbar); backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--line);
     }
     .title { display: flex; flex-direction: column; gap: 2px; }
@@ -52,7 +75,7 @@
       border: 1px solid var(--line); background: var(--panel); color: var(--text);
       border-radius: var(--radius); padding: 10px 8px; display: flex; align-items: center; justify-content: center; gap: 6px;
     }
-    .nav button.active { border-color: var(--primary); color: var(--primary); background: #eff6ff; }
+    .nav button.active { border-color: var(--primary); color: var(--primary); background: var(--t-blue); }
     .main { width: min(1120px, calc(100% - 24px)); margin: 12px auto 24px; display: grid; gap: 12px; min-width: 0; }
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); min-width: 0; }
     .section { padding: 14px; }
@@ -106,13 +129,13 @@
     .cal-header { text-align: center; color: var(--muted); padding: 4px 0; font-size: 11px; }
     .cal-day {
       height: 76px; max-height: 76px; min-height: 0; border: 1px solid var(--line); border-radius: 4px;
-      padding: 2px 4px; position: relative; background: white; vertical-align: top;
+      padding: 2px 4px; position: relative; background: var(--panel); vertical-align: top;
       overflow-y: auto; box-sizing: border-box;
     }
-    .cal-day.other-month { background: #f8fafc; color: #b0b8c9; }
-    .cal-day.today-cell { border-color: var(--primary); background: #eff6ff; }
+    .cal-day.other-month { background: var(--panel-2); color: var(--other-month); }
+    .cal-day.today-cell { border-color: var(--primary); background: var(--t-blue); }
     .cal-day.today-cell .cal-day-num { color: var(--primary); font-weight: 700; }
-    .cal-day.holiday-cell { background: #fef2f2; }
+    .cal-day.holiday-cell { background: var(--t-red); }
     .cal-day.edit-target { border-color: var(--orange); box-shadow: inset 0 0 0 2px var(--orange); }
     .cal-day-head {
       display: flex; align-items: baseline; gap: 3px; margin-bottom: 2px;
@@ -136,18 +159,18 @@
     /* 부분 착용: 유효기간 종료일에 사용 중 끝나는 계획 */
     .plan-bar.partial { outline: 2px dashed #7c3aed; outline-offset: -1px;
       background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.45) 0 4px, transparent 4px 8px); }
-    .cal-day.drag-over { background: #dbeafe; border-color: var(--primary); }
+    .cal-day.drag-over { background: var(--t-blue2); border-color: var(--primary); }
     .plan-list-item {
       display: grid; grid-template-columns: 10px 1fr auto; align-items: center;
       gap: 8px; padding: 10px 12px; border: 1px solid var(--line);
-      border-radius: var(--radius); background: white; transition: box-shadow 0.15s, border-color 0.15s;
+      border-radius: var(--radius); background: var(--panel); transition: box-shadow 0.15s, border-color 0.15s;
     }
     /* 유효기간 초과위험(주황) / 초과(빨강) 계획은 배경색과 왼쪽 띠로 구분 */
-    .plan-list-item.plan-risk { background: #fff7ed; border-color: #fed7aa; border-left: 4px solid var(--orange); }
-    .plan-list-item.plan-over { background: #fef2f2; border-color: #fecaca; border-left: 4px solid var(--red); }
-    .plan-list-item.plan-partial { background: #f5f3ff; border-color: #ddd6fe; border-left: 4px solid #8b5cf6; }
+    .plan-list-item.plan-risk { background: var(--t-orange); border-color: #fed7aa; border-left: 4px solid var(--orange); }
+    .plan-list-item.plan-over { background: var(--t-red); border-color: #fecaca; border-left: 4px solid var(--red); }
+    .plan-list-item.plan-partial { background: var(--t-purple); border-color: #ddd6fe; border-left: 4px solid #8b5cf6; }
     .plan-list-item.plan-selected {
-      border-color: var(--primary); box-shadow: 0 0 0 2px #bfdbfe; background: #eff6ff;
+      border-color: var(--primary); box-shadow: 0 0 0 2px #bfdbfe; background: var(--t-blue);
     }
     .plan-list-item.plan-risk.plan-selected { border-left-color: var(--orange); }
     .plan-list-item.plan-over.plan-selected { border-left-color: var(--red); }
@@ -156,13 +179,13 @@
     .plan-sensor-btn {
       display: flex; align-items: center; gap: 8px; padding: 10px 12px;
       border: 1px solid var(--line); border-radius: var(--radius);
-      background: white; cursor: pointer; text-align: left; width: 100%;
+      background: var(--panel); cursor: pointer; text-align: left; width: 100%;
     }
-    .plan-sensor-btn.selected { border-color: var(--primary); background: #eff6ff; }
+    .plan-sensor-btn.selected { border-color: var(--primary); background: var(--t-blue); }
     .plan-sensor-btn:disabled { opacity: 0.45; cursor: not-allowed; }
     .plan-sensor-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
     .plan-form-row { display: grid; gap: 8px; margin-top: 10px; }
-    .plan-overlap-warn { color: var(--red); font-size: 12px; padding: 6px 10px; background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius); }
+    .plan-overlap-warn { color: var(--red); font-size: 12px; padding: 6px 10px; background: var(--t-red); border: 1px solid #fecaca; border-radius: var(--radius); }
     .cal-today-line {
       position: absolute; top: 0; bottom: 0; width: 2px; background: var(--primary);
       opacity: 0.5; pointer-events: none;
@@ -174,7 +197,7 @@
     .stat .label { color: var(--muted); font-size: 12px; }
     .stat .value { font-size: 26px; font-weight: 700; letter-spacing: 0; }
     .stat .hint { font-size: 12px; color: var(--muted); }
-    .bar { height: 8px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+    .bar { height: 8px; border-radius: 999px; background: var(--t-slate2); overflow: hidden; }
     .bar > span { display: block; height: 100%; border-radius: inherit; }
     .toolbar {
       display: grid; gap: 8px; grid-template-columns: 1.2fr 1fr 1fr auto;
@@ -188,28 +211,28 @@
       .toolbar.inv-toolbar .btn { grid-column: span 3; white-space: nowrap; }
     }
     .field, select, input, textarea {
-      width: 100%; border: 1px solid var(--line); background: white; color: var(--text);
+      width: 100%; border: 1px solid var(--line); background: var(--panel); color: var(--text);
       border-radius: var(--radius); padding: 10px 12px; outline: none;
     }
     textarea { min-height: 92px; resize: vertical; }
     .field:focus, select:focus, input:focus, textarea:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
     .btn {
-      border: 1px solid var(--line); background: white; color: var(--text);
+      border: 1px solid var(--line); background: var(--panel); color: var(--text);
       border-radius: var(--radius); padding: 10px 12px; display: inline-flex; align-items: center; gap: 8px;
     }
     .btn.primary { background: var(--primary); color: white; border-color: var(--primary); }
     .btn.ghost { background: transparent; }
-    .btn.danger { background: #fef2f2; color: var(--red); border-color: #fecaca; }
+    .btn.danger { background: var(--t-red); color: var(--red); border-color: #fecaca; }
     .btn.small { padding: 7px 10px; font-size: 12px; }
     .stack { display: flex; gap: 8px; flex-wrap: wrap; }
     .list { display: grid; gap: 10px; }
     .item {
-      padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: white;
+      padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
       display: grid; gap: 8px;
     }
     .item.head {
       display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr auto; gap: 8px; align-items: center;
-      background: #f8fafc; color: var(--muted); font-size: 12px;
+      background: var(--panel-2); color: var(--muted); font-size: 12px;
     }
     .item.row {
       grid-template-columns: 1.5fr 1fr 1fr 1fr auto; align-items: center;
@@ -220,13 +243,13 @@
       display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px;
       font-size: 12px; border: 1px solid transparent; white-space: nowrap;
     }
-    .status.ready { color: #0369a1; background: #e0f2fe; border-color: #bae6fd; }
-    .status.in_use { color: #15803d; background: #dcfce7; border-color: #bbf7d0; }
-    .status.warning { color: #b45309; background: #ffedd5; border-color: #fed7aa; }
-    .status.shelf_warning { color: #b45309; background: #ffedd5; border-color: #fed7aa; }
-    .status.expired { color: #b91c1c; background: #fee2e2; border-color: #fecaca; }
-    .status.archived { color: #475569; background: #e2e8f0; border-color: #cbd5e1; }
-    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; font-size: 12px; background: #f8fafc; border: 1px solid var(--line); color: var(--muted); }
+    .status.ready { color: #0369a1; background: var(--t-sky); border-color: #bae6fd; }
+    .status.in_use { color: #15803d; background: var(--t-green); border-color: #bbf7d0; }
+    .status.warning { color: #b45309; background: var(--t-orange2); border-color: #fed7aa; }
+    .status.shelf_warning { color: #b45309; background: var(--t-orange2); border-color: #fed7aa; }
+    .status.expired { color: #b91c1c; background: var(--t-red2); border-color: #fecaca; }
+    .status.archived { color: #475569; background: var(--t-slate2); border-color: #cbd5e1; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; font-size: 12px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
     .split { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 12px; min-width: 0; }
     .split > * { min-width: 0; }
     @media (max-width: 960px) { .split { grid-template-columns: 1fr; } }
@@ -295,7 +318,7 @@
       padding: 10px 12px;
       border: 1px dashed var(--line);
       border-radius: var(--radius);
-      background: #f8fafc;
+      background: var(--panel-2);
       color: var(--muted);
       min-height: 44px;
     }
@@ -668,6 +691,15 @@
         <div class="split">
           <div class="grid" style="gap:12px;">
             <div class="panel section" style="box-shadow:none;">
+              <strong>화면 테마</strong>
+              <div class="mini" style="margin:8px 0 10px;">라이트·다크 중에서 고르거나 기기 설정을 따릅니다.</div>
+              <select id="themeSelect" style="max-width: 200px;">
+                <option value="system">기기 설정 따라가기</option>
+                <option value="light">라이트</option>
+                <option value="dark">다크</option>
+              </select>
+            </div>
+            <div class="panel section" style="box-shadow:none;">
               <strong>경고 기준</strong>
               <div class="mini" style="margin:8px 0 10px;">만료 임박 판단 일수</div>
               <div class="stack">
@@ -808,7 +840,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.23.0/umd/index.min.js"></script>
   <script>
     const STORAGE_KEY = 'cgm_v5';
-    const DEFAULT_SETTINGS = { alertDays: 30, avgShelfMonths: 0, customHolidays: {}, expiryRules: {} };
+    const DEFAULT_SETTINGS = { alertDays: 30, avgShelfMonths: 0, customHolidays: {}, expiryRules: {}, theme: 'system' };
     // 설정 병합: customHolidays·expiryRules 객체를 DEFAULT_SETTINGS와 공유하지 않도록 매번 새로 만든다
     function mergeSettings(src) {
       const s = { ...DEFAULT_SETTINGS, ...(src || {}) };
@@ -989,6 +1021,7 @@
       addCustomHoliday: document.getElementById('addCustomHoliday'),
       customHolidayList: document.getElementById('customHolidayList'),
       saveAlertDays: document.getElementById('saveAlertDays'),
+      themeSelect: document.getElementById('themeSelect'),
       exportData: document.getElementById('exportData'),
       exportInventoryCsv: document.getElementById('exportInventoryCsv'),
       csvWithSerial: document.getElementById('csvWithSerial'),
@@ -2713,7 +2746,7 @@
           const typeColor = sensorTypeColor(type);
           const c = it.calc;
           return `
-            <div class="item" style="margin:0; background:#f8fafc; border-left:4px solid ${typeColor};">
+            <div class="item" style="margin:0; background:var(--panel-2); border-left:4px solid ${typeColor};">
               <div class="name" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <span><span class="badge" style="background:${typeColor}22; color:${typeColor}; border-color:${typeColor}33; margin-right:6px;">■</span>${escapeHtml(type?.name || '알 수 없음')}</span>
                 ${multi ? `<span class="badge" style="background:${typeColor}14; color:${typeColor}; border-color:${typeColor}33;">${ddayLabel(c)}</span>` : ''}
@@ -2757,7 +2790,7 @@
         .sort((a, b) => compareItems(a, b, 'effectiveAsc'))
         .slice(0, 8);
       const priority = dashTypeFilter ? priorityBase.filter(it => it.typeId === dashTypeFilter) : priorityBase;
-      const filterLabel = dashTypeFilter ? ` <span class="badge" style="background:#eff6ff;color:var(--primary);border-color:#bfdbfe;cursor:pointer;" id="dashTypeFilterClear">✕ ${escapeHtml(sensorTypeById(dashTypeFilter)?.name || '')}</span>` : '';
+      const filterLabel = dashTypeFilter ? ` <span class="badge" style="background:var(--t-blue);color:var(--primary);border-color:#bfdbfe;cursor:pointer;" id="dashTypeFilterClear">✕ ${escapeHtml(sensorTypeById(dashTypeFilter)?.name || '')}</span>` : '';
       els.priorityCount.innerHTML = `${priorityBase.length}개${filterLabel}`;
       els.priorityList.innerHTML = priority.length ? priority.map(renderMiniItem).join('') : emptyRow(dashTypeFilter ? '해당 종류의 임박 재고가 없습니다.' : `만료 임박 판단 일수(${alertDays}일) 이내 재고가 없습니다.`);
       document.getElementById('dashTypeFilterClear')?.addEventListener('click', (e) => {
@@ -2992,7 +3025,7 @@
 
       host.innerHTML = `
         <div class="mini" style="margin-bottom:10px; color:var(--muted);">현재 미개봉 보유량 ${unopened.length}개, ${rateSource} 기준 월 소비속도 약 ${monthlyRate.toFixed(1)}개(교체 주기 약 ${avgWearDays.toFixed(1)}일)로 계산했습니다. 종류는 구분하지 않으며, 명절 등 행사 시 저렴한 센서로 구입하는 방식을 감안해 총수량만 안내합니다.</div>
-        <div class="mini" style="padding:10px 12px; background:#f8fafc; border-radius:6px;"><strong>${runOutMonth.label}</strong> 이전 <strong>${totalNeed}개</strong> 구입 필요${suffix}</div>
+        <div class="mini" style="padding:10px 12px; background:var(--panel-2); border-radius:6px;"><strong>${runOutMonth.label}</strong> 이전 <strong>${totalNeed}개</strong> 구입 필요${suffix}</div>
       `;
     }
 
@@ -3019,19 +3052,19 @@
       if (plan._inUse) {
         // 사용기간이 끝났는데 종료 처리를 안 한 센서는 "사용중"이 아니라 주황색으로 구분해 처리를 유도한다
         if (plan._ended) {
-          return `<span class="badge" style="background:#ffedd5; color:#b45309; border-color:#fed7aa;">종료 처리 필요 ${plan.startDate} ~ ${end}</span>`;
+          return `<span class="badge" style="background:var(--t-orange2); color:#b45309; border-color:#fed7aa;">종료 처리 필요 ${plan.startDate} ~ ${end}</span>`;
         }
         const label = plan._archived ? '실사용' : '사용중';
-        return `<span class="badge" style="background:#dcfce7; color:#15803d; border-color:#bbf7d0;">${label} ${plan.startDate} ~ ${end}</span>`;
+        return `<span class="badge" style="background:var(--t-green); color:#15803d; border-color:#bbf7d0;">${label} ${plan.startDate} ~ ${end}</span>`;
       }
       if (plan.partialEnd) {
-        return `<span class="badge" style="background:#f5f3ff; color:#6d28d9; border-color:#c4b5fd;" title="유효기간 종료일에 사용 중 종료됩니다">부분 착용 ${plan.startDate} ~ ${end} (유효기간 종료)</span>`;
+        return `<span class="badge" style="background:var(--t-purple); color:#6d28d9; border-color:#c4b5fd;" title="유효기간 종료일에 사용 중 종료됩니다">부분 착용 ${plan.startDate} ~ ${end} (유효기간 종료)</span>`;
       }
       const duringExp = expiryDuringUse(plan);
       if (duringExp) {
-        return `<span class="badge" style="background:#f5f3ff; color:#6d28d9; border-color:#c4b5fd;" title="사용 중에 유효기간이 도래합니다">사용 중 유효기간 도래 ${plan.startDate} ~ ${end} (유효기간 ${duringExp})</span>`;
+        return `<span class="badge" style="background:var(--t-purple); color:#6d28d9; border-color:#c4b5fd;" title="사용 중에 유효기간이 도래합니다">사용 중 유효기간 도래 ${plan.startDate} ~ ${end} (유효기간 ${duringExp})</span>`;
       }
-      return `<span class="badge" style="background:#eff6ff; color:var(--primary); border-color:#bfdbfe;">계획 ${plan.startDate} ~ ${end}</span>`;
+      return `<span class="badge" style="background:var(--t-blue); color:var(--primary); border-color:#bfdbfe;">계획 ${plan.startDate} ~ ${end}</span>`;
     }
 
     function renderMiniItem(item) {
@@ -3177,7 +3210,19 @@
       els.scanTypeSelect.value = els.formType.value || '';
     }
 
+    // 테마: 'system'(기기 설정) / 'light' / 'dark'. <html data-theme>와 theme-color 메타에 반영한다.
+    const themeMedia = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    function applyTheme() {
+      const pref = (state && state.settings && state.settings.theme) || 'system';
+      const dark = pref === 'dark' || (pref === 'system' && !!(themeMedia && themeMedia.matches));
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', dark ? '#0b1220' : '#0f172a');
+    }
+    if (themeMedia && themeMedia.addEventListener) themeMedia.addEventListener('change', () => applyTheme());
+
     function renderSettings() {
+      els.themeSelect.value = state.settings.theme || 'system';
       els.alertDays.value = state.settings.alertDays ?? 30;
       els.avgShelfMonths.value = state.settings.avgShelfMonths || '';
       renderCustomHolidayList();
@@ -3376,7 +3421,7 @@
             <span class="plan-sensor-dot" style="background:${color};"></span>
             <span style="flex:1; text-align:left;">
               <span style="font-weight:700;">${escapeHtml(type?.name || '-')}</span>
-              <span class="badge" style="margin-left:6px; background:#f1f5f9; color:var(--muted); border-color:var(--line); font-size:10px;">우선순위 ${rank}</span>
+              <span class="badge" style="margin-left:6px; background:var(--t-slate); color:var(--muted); border-color:var(--line); font-size:10px;">우선순위 ${rank}</span>
               <span class="meta" style="display:block;">LOT ${escapeHtml(item.lot || '-')}${item.serial ? ` · S/N ${escapeHtml(item.serial)}` : ''} · 유효기간 ${fmtDate(item.expiry)}</span>
               <span class="meta" style="color:var(--primary);">↔ 달력에 드래그</span>
             </span>
@@ -3638,7 +3683,7 @@
       if (!r.total) { els.planAutoCompare.innerHTML = '<div class="mini">배치할 미개봉 재고가 없습니다.</div>'; return; }
       // 좁은 화면에서도 버튼이 가려지지 않도록 표 대신 옵션별 카드로 보여 준다
       els.planAutoCompare.innerHTML = `<div class="list" style="gap:6px;">${r.options.map(o => `
-        <div class="item" style="padding:8px 10px; ${o.key === planAutoLossKey ? 'background:#eff6ff; border-color:var(--primary);' : ''}">
+        <div class="item" style="padding:8px 10px; ${o.key === planAutoLossKey ? 'background:var(--t-blue); border-color:var(--primary);' : ''}">
           <div class="stack" style="justify-content:space-between; align-items:center; flex-wrap:nowrap; gap:8px;">
             <strong style="font-size:13px;">${escapeHtml(o.label)}</strong>
             <button type="button" class="btn small" style="white-space:nowrap; flex-shrink:0;" data-loss-key="${o.key}" ${o.applicable ? '' : 'disabled'}>${o.key === planAutoLossKey ? '선택됨' : '일정 보기'}</button>
@@ -3733,7 +3778,7 @@
       const lostHtml = lossMode && planAutoLost.length ? `
         <div class="mini" style="margin:8px 0 4px; color:var(--red); font-weight:700;">손실 ${planAutoLost.length}건 — 유효기간 규칙상 일정에 넣을 수 없어 뺀 재고</div>
         ${planAutoLost.map(l => `
-          <div class="item" style="border-left:4px solid var(--red); background:#fef2f2;">
+          <div class="item" style="border-left:4px solid var(--red); background:var(--t-red);">
             <div class="name">${escapeHtml(l.typeName)}${l.serial ? ` · S/N ${escapeHtml(l.serial)}` : ''}</div>
             <div class="meta">유효기간 ${fmtDate(l.expiry) || '-'} · 시작 가능한 마지막 날 ${l.lastIso}${l.pastStart ? ' (시작일 이전)' : ''}을(를) 지켜 배치할 수 없음</div>
             ${l.planId ? '<div class="meta" style="color:var(--red);">기존 계획이 있으면 적용 시 삭제됩니다.</div>' : ''}
@@ -3752,7 +3797,7 @@
         const type = sensorTypeById(p.typeId);
         const color = sensorTypeColor(type);
         return `
-          <label class="item" style="display:flex; align-items:center; gap:10px; border-left:4px solid ${color}; ${p.warning ? 'background:#fef2f2;' : ''}">
+          <label class="item" style="display:flex; align-items:center; gap:10px; border-left:4px solid ${color}; ${p.warning ? 'background:var(--t-red);' : ''}">
             <input type="checkbox" data-auto-idx="${idx}" ${p.warning ? '' : 'checked'} style="width:16px; height:16px; flex-shrink:0;" />
             <div style="flex:1;">
               <div class="name">${escapeHtml(p.typeName)}${p.serial ? ` · S/N ${escapeHtml(p.serial)}` : ''}</div>
@@ -4758,6 +4803,7 @@
     }
 
     function rerender() {
+      applyTheme();
       _calcCache.clear();
       renderToday();
       renderStats();
@@ -4890,6 +4936,12 @@
       state.sensorTypes = state.sensorTypes.filter(t => t.id !== id);
       saveState();
       rerender();
+    });
+
+    els.themeSelect.addEventListener('change', () => {
+      state.settings.theme = els.themeSelect.value;
+      saveState();
+      applyTheme();
     });
 
     els.saveAlertDays.addEventListener('click', () => {
