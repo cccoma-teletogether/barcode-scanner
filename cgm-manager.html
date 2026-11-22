@@ -135,6 +135,10 @@
     .cal-day.other-month { background: var(--panel-2); color: var(--other-month); }
     .cal-day.today-cell { border-color: var(--primary); background: var(--t-blue); }
     .cal-day.today-cell .cal-day-num { color: var(--primary); font-weight: 700; }
+    .cal-day.today-cell { display: flex; flex-direction: column; }
+    .cal-day.today-cell > * { flex-shrink: 0; }
+    .cal-today-tag { margin-top: auto; align-self: flex-end; position: sticky; bottom: 0; padding: 0 5px; border-radius: 999px;
+      background: var(--primary); color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; pointer-events: none; }
     .cal-day.holiday-cell { background: var(--t-red); }
     .cal-day.edit-target { border-color: var(--orange); box-shadow: inset 0 0 0 2px var(--orange); }
     .cal-day-head {
@@ -4040,6 +4044,7 @@
             ${holidayLabel}
           </div>
           ${barsHtml}
+          ${isToday ? '<span class="cal-today-tag">오늘</span>' : ''}
         </div>`;
       }
 
@@ -4113,6 +4118,7 @@
             ${holidayLabel}
           </div>
           ${barsHtml}
+          ${isToday ? '<span class="cal-today-tag">오늘</span>' : ''}
         </div>`;
       }
 
