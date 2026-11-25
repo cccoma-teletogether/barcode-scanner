@@ -4181,7 +4181,7 @@
           const color = sensorTypeColor(type);
           const borderStyle = state.settings.presoakBorderStyle === 'dashed' ? 'dashed' : 'solid';
           const titleAttr = escapeAttr(`${type?.name || '-'} 프리소킹 — ${dateStr}에 실제로 미리 부착함`);
-          return `<span class="cal-presoak-label" style="color:${color}; border-color:${color}; border-style:${borderStyle};" title="${titleAttr}">부착</span>`;
+          return `<div class="cal-presoak-label" style="color:${color}; border-color:${color}; border-style:${borderStyle};" title="${titleAttr}">부착</div>`;
         })() : '';
 
         const barsHtml = bars.map(u => {
@@ -4205,9 +4205,9 @@
           <div class="cal-day-head">
             <span class="cal-day-num${numClass ? ' ' + numClass : ''}">${d}</span>
             ${holidayLabel}
-            ${historyPresoakLabel}
           </div>
           ${barsHtml}
+          ${historyPresoakLabel}
           ${isToday ? '<span class="cal-today-tag">오늘</span>' : ''}
         </div>`;
       }
