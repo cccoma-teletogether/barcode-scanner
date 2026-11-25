@@ -121,7 +121,12 @@
     }
     .plan-calendar-panel:focus { outline: none; }
     .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-    .cal-nav strong { font-size: 15px; }
+    .cal-span-select {
+      display: inline-block; width: auto; font-size: 12px; padding: 5px 28px 5px 10px;
+      margin: 0 0 12px;
+    }
+    .cal-month-label { font-size: 14px; font-weight: 700; color: var(--muted); margin: 16px 0 8px; }
+    .cal-month-label:first-child { margin-top: 0; }
     .cal-grid {
       display: grid; grid-template-columns: repeat(7, 1fr); grid-auto-rows: 76px;
       gap: 2px; font-size: 12px;
@@ -664,15 +669,19 @@
           </div>
           <!-- 우측: 달력 (좁은 화면에서는 맨 위로) -->
           <div class="panel section plan-calendar-panel" id="planCalendarPanel" tabindex="-1">
-            <div class="cal-nav">
-              <button class="btn small" id="calPrev">&#8249;</button>
-              <strong id="calTitle"></strong>
+            <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <strong>사용계획 달력</strong>
               <div style="display:flex;gap:6px;">
                 <button class="btn small" id="calToday">오늘</button>
+                <button class="btn small" id="calPrev">&#8249;</button>
                 <button class="btn small" id="calNext">&#8250;</button>
               </div>
             </div>
-            <div class="cal-grid" id="calGrid"></div>
+            <select id="calSpan" class="cal-span-select">
+              <option value="1">1개월</option>
+              <option value="2">2개월</option>
+            </select>
+            <div id="calGridStack"></div>
           </div>
         </div>
       </section>
@@ -1100,8 +1109,8 @@
       calPrev: document.getElementById('calPrev'),
       calNext: document.getElementById('calNext'),
       calToday: document.getElementById('calToday'),
-      calTitle: document.getElementById('calTitle'),
-      calGrid: document.getElementById('calGrid'),
+      calSpan: document.getElementById('calSpan'),
+      calGrid: document.getElementById('calGridStack'),
       historyCalPrev: document.getElementById('historyCalPrev'),
       historyCalNext: document.getElementById('historyCalNext'),
       historyCalToday: document.getElementById('historyCalToday'),
@@ -3980,11 +3989,12 @@
       }
     }
 
-    function renderCalendar() {
-      const today = todayISO();
-      const year = planCalYear, month = planCalMonth;
-      els.calTitle.textContent = `${year}년 ${month + 1}월`;
+    // 사용계획 캘린더에서 한 번에 보여줄 개월 수(1 또는 2). localStorage에 기억해 다음 방문에도 유지한다.
+    const CAL_SPAN_KEY = 'cgm_cal_span';
+    let planCalSpan = Number(localStorage.getItem(CAL_SPAN_KEY)) === 2 ? 2 : 1;
 
+    // 연-월 하나에 대한 달력 그리드(cal-grid) HTML을 만든다 (renderCalendar의 월별 렌더링을 분리한 헬퍼)
+    function buildMonthGridHtml(year, month, allPlans, editingStart, today) {
       const firstDay = new Date(year, month, 1);
       const lastDay = new Date(year, month + 1, 0);
       const startDow = firstDay.getDay(); // 0=일
@@ -3999,11 +4009,6 @@
         html += `<div class="cal-day other-month"><span class="cal-day-num">${prev.getDate()}</span></div>`;
       }
 
-      // 시작일을 수정 중인 계획이 있으면 그 시작일 칸을 표시한다
-      const editingStart = planEditingPlanId
-        ? state.plans.find(p => p.id === planEditingPlanId)?.startDate
-        : null;
-
       // 이번 달 날짜별 계획 막대 계산
       for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
@@ -4012,7 +4017,6 @@
         const holiday = holidayName(dateStr);
 
         // 이 날짜와 겹치는 계획들 (사용중 포함)
-        const allPlans = allActivePlans();
         const bars = allPlans.filter(p => {
           const end = planEndDate(p);
           return dateStr >= p.startDate && dateStr <= end;
@@ -4057,8 +4061,34 @@
       for (let i = 1; i <= remain; i++) {
         html += `<div class="cal-day other-month"><span class="cal-day-num">${i}</span></div>`;
       }
+      return html;
+    }
 
-      els.calGrid.innerHTML = html;
+    function renderCalendar() {
+      const today = todayISO();
+      const year = planCalYear, month = planCalMonth;
+      const allPlans = allActivePlans();
+      // 시작일을 수정 중인 계획이 있으면 그 시작일 칸을 표시한다
+      const editingStart = planEditingPlanId
+        ? state.plans.find(p => p.id === planEditingPlanId)?.startDate
+        : null;
+
+      const months = [];
+      for (let i = 0; i < planCalSpan; i++) {
+        let y = year, m = month + i;
+        if (m > 11) { m -= 12; y += 1; }
+        months.push({ y, m });
+      }
+
+      els.calGrid.innerHTML = months.map(({ y, m }, i) => `
+        <div class="cal-month-label">${y}년 ${m + 1}월</div>
+        ${i === 0 ? '<span id="calSpanSlot"></span>' : ''}
+        <div class="cal-grid">${buildMonthGridHtml(y, m, allPlans, editingStart, today)}</div>
+      `).join('');
+
+      // calSpan select는 매번 새로 만들지 않고 기존 DOM 노드를 그대로 첫 달 제목 아래로 옮긴다(상태 보존)
+      const slot = document.getElementById('calSpanSlot');
+      if (slot) slot.replaceWith(els.calSpan);
     }
 
     // 실제 개봉~종료(또는 진행중이면 오늘까지)한 센서를 한 눈에 보여주는 읽기 전용 이력 달력
@@ -4465,14 +4495,14 @@
     });
 
     els.calPrev.addEventListener('click', () => {
-      planCalMonth--;
-      if (planCalMonth < 0) { planCalMonth = 11; planCalYear--; }
+      planCalMonth -= planCalSpan;
+      while (planCalMonth < 0) { planCalMonth += 12; planCalYear--; }
       renderCalendar();
     });
 
     els.calNext.addEventListener('click', () => {
-      planCalMonth++;
-      if (planCalMonth > 11) { planCalMonth = 0; planCalYear++; }
+      planCalMonth += planCalSpan;
+      while (planCalMonth > 11) { planCalMonth -= 12; planCalYear++; }
       renderCalendar();
     });
 
@@ -4480,6 +4510,13 @@
       const now = new Date();
       planCalYear = now.getFullYear();
       planCalMonth = now.getMonth();
+      renderCalendar();
+    });
+
+    els.calSpan.value = String(planCalSpan);
+    els.calSpan.addEventListener('change', () => {
+      planCalSpan = els.calSpan.value === '2' ? 2 : 1;
+      localStorage.setItem(CAL_SPAN_KEY, String(planCalSpan));
       renderCalendar();
     });
 
