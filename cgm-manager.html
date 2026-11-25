@@ -3071,6 +3071,7 @@
       const alertDays = Number(state.settings.alertDays || 30);
       const priorityBase = items
         .filter(it => !it.archived)
+        .filter(it => it.calc.status !== 'expired')
         .filter(it => it.calc.effective && it.calc.remaining != null && it.calc.remaining <= alertDays)
         .sort((a, b) => compareItems(a, b, 'effectiveAsc'))
         .slice(0, 8);
