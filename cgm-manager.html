@@ -157,6 +157,13 @@
       font-size: 9px; color: var(--red); white-space: nowrap;
       overflow: hidden; text-overflow: ellipsis; line-height: 1.3; min-width: 0;
     }
+    /* 프리소킹(미리 부착): 부착일 날짜 숫자와 같은 줄 오른쪽에 표시하는 참고용 배지, 계산에는 영향 없음.
+       테두리 스타일(실선/점선)은 설정(presoakBorderStyle)에 따라 인라인으로 지정된다. */
+    .cal-presoak-label {
+      font-size: 9px; font-weight: 700; white-space: nowrap; line-height: 1.3;
+      border-width: 1px; border-color: currentColor; border-radius: 999px; padding: 0 5px; flex-shrink: 0;
+      margin-left: auto;
+    }
     .plan-bar {
       display: block; font-size: 10px; padding: 1px 4px; border-radius: 3px;
       margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -388,18 +395,15 @@
       <section id="view-dashboard" class="grid gap-12">
         <div class="grid cols-5" id="statsRow"></div>
         <div class="panel section">
-          <div class="stack" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <strong>실제 사용 이력</strong>
-            <span class="mini" style="color:var(--muted);">개봉일 ~ 실제/예상 종료일 기준</span>
-          </div>
           <div class="cal-nav">
-            <button class="btn small" id="historyCalPrev">&#8249;</button>
-            <strong id="historyCalTitle"></strong>
+            <strong>실제 사용 이력</strong>
             <div style="display:flex;gap:6px;">
               <button class="btn small" id="historyCalToday">오늘</button>
+              <button class="btn small" id="historyCalPrev">&#8249;</button>
               <button class="btn small" id="historyCalNext">&#8250;</button>
             </div>
           </div>
+          <div class="cal-month-label" id="historyCalTitle"></div>
           <div class="cal-grid" id="historyCalGrid"></div>
         </div>
         <div class="split" id="dashboardSplitPanels">
@@ -537,6 +541,10 @@
               <label>
                 <div class="mini">개봉일</div>
                 <input id="formOpenedAt" type="date" />
+              </label>
+              <label title="실제로 미리 부착(프리소킹)한 날짜 — 기록용, 계산에는 영향 없음">
+                <div class="mini">프리소킹한 날짜</div>
+                <input id="formPresoakedAt" type="date" />
               </label>
               <label title="실제 종료(폐기)일 — 입력하면 폐기 처리됩니다">
                 <div class="mini">종료일 · 입력 시 폐기</div>
@@ -714,6 +722,11 @@
                 <option value="light">라이트</option>
                 <option value="dark">다크</option>
               </select>
+              <div class="mini" style="margin:12px 0 10px;">사용계획 달력의 "부착"(프리소킹) 배지 테두리</div>
+              <select id="presoakBorderStyle" style="max-width: 200px;">
+                <option value="solid">실선</option>
+                <option value="dashed">점선</option>
+              </select>
             </div>
             <div class="panel section" style="box-shadow:none;">
               <strong>경고 기준</strong>
@@ -803,6 +816,10 @@
                 <input id="typeColor" type="color" value="#64748b" style="height: 42px; padding: 4px;" />
               </div>
               <div class="grid cols-2">
+                <input id="typePresoakDays" type="number" min="0" step="1" placeholder="프리소킹(일, 미리 부착)" />
+                <span class="mini" style="color:var(--muted); align-self:center;">측정 시작 N일 전 부착(표시 전용)</span>
+              </div>
+              <div class="grid cols-2">
                 <input id="typeGtin" placeholder="GTIN" />
                 <input id="typeModel" placeholder="모델명" />
               </div>
@@ -856,7 +873,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.23.0/umd/index.min.js"></script>
   <script>
     const STORAGE_KEY = 'cgm_v5';
-    const DEFAULT_SETTINGS = { alertDays: 30, avgShelfMonths: 0, customHolidays: {}, expiryRules: {}, theme: 'system' };
+    const DEFAULT_SETTINGS = { alertDays: 30, avgShelfMonths: 0, customHolidays: {}, expiryRules: {}, theme: 'system', presoakBorderStyle: 'solid' };
     // 설정 병합: customHolidays·expiryRules 객체를 DEFAULT_SETTINGS와 공유하지 않도록 매번 새로 만든다
     function mergeSettings(src) {
       const s = { ...DEFAULT_SETTINGS, ...(src || {}) };
@@ -866,12 +883,12 @@
       return s;
     }
     const DEFAULT_SENSOR_TYPES = [
-      { id: 'caresens_air', name: 'CareSens Air', wearDays: 15, color: '#00c6fb', gtin: '08809126640655', model: 'CGM-ST-002' },
-      { id: 'barogen_fit', name: 'Barozen Fit', wearDays: 15, color: '#43e97b', gtin: '08806712005959', model: 'CGM-ST-003' },
-      { id: 'dexcom_g7', name: 'Dexcom G7', wearDays: 10, color: '#f7971e', gtin: '00386270004673', model: '' },
-      { id: 'fakoring', name: '피코링 / Picoling', wearDays: 15, color: '#f953c6', gtin: '06958590313168', model: '' },
-      { id: 'gs1', name: 'GS1 (Sibionics)', wearDays: 14, color: '#a78bfa', gtin: '06972831642299', model: '' },
-      { id: 'libre2', name: 'FreeStyle Libre 2', wearDays: 14, color: '#38bdf8', gtin: '', model: '' }
+      { id: 'caresens_air', name: 'CareSens Air', wearDays: 15, color: '#00c6fb', gtin: '08809126640655', model: 'CGM-ST-002', presoakDays: 2 },
+      { id: 'barogen_fit', name: 'Barozen Fit', wearDays: 15, color: '#43e97b', gtin: '08806712005959', model: 'CGM-ST-003', presoakDays: 2 },
+      { id: 'dexcom_g7', name: 'Dexcom G7', wearDays: 10, color: '#f7971e', gtin: '00386270004673', model: '', presoakDays: 0 },
+      { id: 'fakoring', name: '피코링 / Picoling', wearDays: 15, color: '#f953c6', gtin: '06958590313168', model: '', presoakDays: 1 },
+      { id: 'gs1', name: 'GS1 (Sibionics)', wearDays: 14, color: '#a78bfa', gtin: '06972831642299', model: '', presoakDays: 3 },
+      { id: 'libre2', name: 'FreeStyle Libre 2', wearDays: 14, color: '#38bdf8', gtin: '', model: '', presoakDays: 0 }
     ];
     const DEFAULT_SENSOR_TYPE_MAP = Object.fromEntries(DEFAULT_SENSOR_TYPES.map(type => [type.id, type]));
     // 대한민국 법정공휴일 (관공서의 공휴일에 관한 규정 기준, 대체공휴일 포함). 매년 말 다음 연도분을 추가해줄 것.
@@ -1006,6 +1023,7 @@
       formLot: document.getElementById('formLot'),
       formExpiry: document.getElementById('formExpiry'),
       formOpenedAt: document.getElementById('formOpenedAt'),
+      formPresoakedAt: document.getElementById('formPresoakedAt'),
       formArchivedAt: document.getElementById('formArchivedAt'),
       formNotes: document.getElementById('formNotes'),
       inventoryForm: document.getElementById('inventoryForm'),
@@ -1038,6 +1056,7 @@
       customHolidayList: document.getElementById('customHolidayList'),
       saveAlertDays: document.getElementById('saveAlertDays'),
       themeSelect: document.getElementById('themeSelect'),
+      presoakBorderStyle: document.getElementById('presoakBorderStyle'),
       exportData: document.getElementById('exportData'),
       exportInventoryCsv: document.getElementById('exportInventoryCsv'),
       csvWithSerial: document.getElementById('csvWithSerial'),
@@ -1056,6 +1075,7 @@
       editingTypeId: document.getElementById('editingTypeId'),
       typeName: document.getElementById('typeName'),
       typeWearDays: document.getElementById('typeWearDays'),
+      typePresoakDays: document.getElementById('typePresoakDays'),
       typeColor: document.getElementById('typeColor'),
       typeGtin: document.getElementById('typeGtin'),
       typeModel: document.getElementById('typeModel'),
@@ -1182,7 +1202,8 @@
         let normalized = {
           ...defaults,
           ...type,
-          color: type.color || defaults.color || '#64748b'
+          color: type.color || defaults.color || '#64748b',
+          presoakDays: Number.isFinite(Number(type.presoakDays)) ? Number(type.presoakDays) : (defaults.presoakDays || 0)
         };
         if (type.id === 'fakoring') {
           normalized = {
@@ -3239,6 +3260,7 @@
 
     function renderSettings() {
       els.themeSelect.value = state.settings.theme || 'system';
+      els.presoakBorderStyle.value = state.settings.presoakBorderStyle || 'solid';
       els.alertDays.value = state.settings.alertDays ?? 30;
       els.avgShelfMonths.value = state.settings.avgShelfMonths || '';
       renderCustomHolidayList();
@@ -3256,7 +3278,7 @@
         <div class="item" style="grid-template-columns: 1fr auto; align-items: center;">
           <div>
             <div class="name"><span class="badge" style="background:${sensorTypeColor(type)}22; color:${sensorTypeColor(type)}; border-color:${sensorTypeColor(type)}33; margin-right:6px;">■</span>${escapeHtml(type.name)}</div>
-            <div class="meta">사용기간 ${type.wearDays}일 · GTIN ${escapeHtml(type.gtin || '-')} · 모델 ${escapeHtml(type.model || '-')}</div>
+            <div class="meta">사용기간 ${type.wearDays}일 · 프리소킹 ${type.presoakDays || 0}일 · GTIN ${escapeHtml(type.gtin || '-')} · 모델 ${escapeHtml(type.model || '-')}</div>
           </div>
           <div class="stack">
             <button class="btn small" data-edit-type="${type.id}">수정</button>
@@ -4022,6 +4044,23 @@
           return dateStr >= p.startDate && dateStr <= end;
         }).sort((a, b) => a.startDate.localeCompare(b.startDate));
 
+        // 프리소킹(미리 부착) 표시: 막대를 늘리지 않고, 실제 부착하는 그 날 하루만 날짜 숫자와 같은 줄에 작은 텍스트로 표시한다.
+        // 계산(사용기간·유효기간 검증·겹침 검사)에는 영향을 주지 않으며, 아직 시작하지 않은 예정 계획에만 적용한다.
+        const presoakPlan = allPlans.find(p => {
+          if (p._inUse) return false;
+          const type = sensorTypeById(p.typeId);
+          const presoakDays = type?.presoakDays || 0;
+          if (!presoakDays) return false;
+          return dateStr === addDays(p.startDate, -presoakDays);
+        });
+        const presoakLabel = presoakPlan ? (() => {
+          const type = sensorTypeById(presoakPlan.typeId);
+          const color = sensorTypeColor(type);
+          const borderStyle = state.settings.presoakBorderStyle === 'dashed' ? 'dashed' : 'solid';
+          const titleAttr = escapeAttr(`${type?.name || '-'} 프리소킹 — ${dateStr}에 미리 부착, 측정은 ${presoakPlan.startDate}부터 시작`);
+          return `<span class="cal-presoak-label" style="color:${color}; border-color:${color}; border-style:${borderStyle};" title="${titleAttr}">부착</span>`;
+        })() : '';
+
         const barsHtml = bars.map(p => {
           const type = sensorTypeById(p.typeId);
           const color = sensorTypeColor(type);
@@ -4049,6 +4088,7 @@
           <div class="cal-day-head">
             <span class="cal-day-num${numClass ? ' ' + numClass : ''}">${d}</span>
             ${holidayLabel}
+            ${presoakLabel}
           </div>
           ${barsHtml}
           ${isToday ? '<span class="cal-today-tag">오늘</span>' : ''}
@@ -4128,6 +4168,16 @@
         const bars = used.filter(u => dateStr >= u.item.openedAt && dateStr <= u.end)
           .sort((a, b) => a.item.openedAt.localeCompare(b.item.openedAt));
 
+        // 프리소킹(미리 부착) 표시: 실제로 입력된 재고별 presoakedAt 날짜에만 참고용 배지 표시(계산에는 영향 없음)
+        const historyPresoakItem = used.find(u => u.item.presoakedAt && dateStr === u.item.presoakedAt);
+        const historyPresoakLabel = historyPresoakItem ? (() => {
+          const type = sensorTypeById(historyPresoakItem.item.typeId);
+          const color = sensorTypeColor(type);
+          const borderStyle = state.settings.presoakBorderStyle === 'dashed' ? 'dashed' : 'solid';
+          const titleAttr = escapeAttr(`${type?.name || '-'} 프리소킹 — ${dateStr}에 실제로 미리 부착함`);
+          return `<span class="cal-presoak-label" style="color:${color}; border-color:${color}; border-style:${borderStyle};" title="${titleAttr}">부착</span>`;
+        })() : '';
+
         const barsHtml = bars.map(u => {
           const type = sensorTypeById(u.item.typeId);
           const color = sensorTypeColor(type);
@@ -4149,6 +4199,7 @@
           <div class="cal-day-head">
             <span class="cal-day-num${numClass ? ' ' + numClass : ''}">${d}</span>
             ${holidayLabel}
+            ${historyPresoakLabel}
           </div>
           ${barsHtml}
           ${isToday ? '<span class="cal-today-tag">오늘</span>' : ''}
@@ -4804,6 +4855,7 @@
       els.editingTypeId.value = '';
       els.typeForm.reset();
       els.typeColor.value = '#64748b';
+      els.typePresoakDays.value = 0;
       els.typeSubmitBtn.textContent = '센서 종류 추가';
       els.cancelTypeEdit.disabled = true;
     }
@@ -4812,6 +4864,7 @@
       els.editingTypeId.value = type.id;
       els.typeName.value = type.name || '';
       els.typeWearDays.value = type.wearDays || 0;
+      els.typePresoakDays.value = type.presoakDays || 0;
       els.typeColor.value = type.color || '#64748b';
       els.typeGtin.value = type.gtin || '';
       els.typeModel.value = type.model || '';
@@ -4831,6 +4884,7 @@
       els.formLot.value = item.lot || '';
       els.formExpiry.value = item.expiry || '';
       els.formOpenedAt.value = item.openedAt || '';
+      els.formPresoakedAt.value = item.presoakedAt || '';
       els.formArchivedAt.value = item.archived ? (item.archivedAt || '') : '';
       els.formSerial.value = item.serial || '';
       els.formNotes.value = item.notes || '';
@@ -4852,6 +4906,7 @@
         <div class="kv"><div class="k">LOT</div><div class="v">${escapeHtml(item.lot || '-')}</div></div>
         <div class="kv"><div class="k">보관 유효기간</div><div class="v">${fmtDate(item.expiry)}${c.shelfRemaining != null ? ` <span class="meta">(${fmtDday(c.shelfRemaining)})</span>` : ''}</div></div>
         <div class="kv"><div class="k">개봉일</div><div class="v">${fmtDate(item.openedAt)}</div></div>
+        ${item.presoakedAt ? `<div class="kv"><div class="k">프리소킹한 날짜</div><div class="v">${fmtDate(item.presoakedAt)}</div></div>` : ''}
         <div class="kv"><div class="k">사용기간</div><div class="v">${type?.wearDays ?? '-'}일</div></div>
         <div class="kv"><div class="k">사용기간 종료일</div><div class="v">${fmtDate(c.wearEnd)}${c.wearRemaining != null ? ` <span class="meta">(${fmtDday(c.wearRemaining)})</span>` : ''}</div></div>
         ${item.archived ? `<div class="kv"><div class="k">실제 종료(폐기)일</div><div class="v">${fmtDate(item.archivedAt)}${c.earlyEnd ? ` <span class="status shelf_warning">조기종료</span>` : ''}</div></div>` : ''}
@@ -4864,8 +4919,15 @@
       els.detailUseStart.onclick = () => {
         const date = promptForDate('실제 사용을 시작한 날짜를 입력하세요.', item.openedAt || todayISO());
         if (date === null) return;
+        const presoakDays = type?.presoakDays || 0;
+        let presoakedAt = item.presoakedAt || '';
+        if (presoakDays) {
+          const suggested = addDays(date, -presoakDays);
+          const input = promptForDate(`실제로 프리소킹(미리 부착)한 날짜를 입력하세요. 입력하지 않으려면 지우고 확인을 누르세요.`, item.presoakedAt || suggested);
+          presoakedAt = input || '';
+        }
         els.detailDialog.close();
-        updateItem(id, { openedAt: date });
+        updateItem(id, { openedAt: date, presoakedAt });
         showToast(`사용을 시작했습니다. (${date})`);
       };
       els.detailUseEnd.onclick = () => {
@@ -5021,6 +5083,7 @@
         lot,
         expiry,
         openedAt: els.formOpenedAt.value || '',
+        presoakedAt: els.formPresoakedAt.value || '',
         notes: els.formNotes.value.trim(),
         archived: !!archivedAt,
         archivedAt,
@@ -5041,11 +5104,13 @@
       const name = els.typeName.value.trim();
       const wearDays = Number(els.typeWearDays.value);
       if (!name || !wearDays) return;
+      const presoakDays = Math.max(0, Number(els.typePresoakDays.value) || 0);
       const id = els.editingTypeId.value || uid('type');
       const payload = {
         id,
         name,
         wearDays,
+        presoakDays,
         color: els.typeColor.value || '#64748b',
         gtin: els.typeGtin.value.trim(),
         model: els.typeModel.value.trim()
@@ -5083,6 +5148,12 @@
       state.settings.theme = els.themeSelect.value;
       saveState();
       applyTheme();
+    });
+
+    els.presoakBorderStyle.addEventListener('change', () => {
+      state.settings.presoakBorderStyle = els.presoakBorderStyle.value === 'dashed' ? 'dashed' : 'solid';
+      saveState();
+      renderCalendar();
     });
 
     els.saveAlertDays.addEventListener('click', () => {
