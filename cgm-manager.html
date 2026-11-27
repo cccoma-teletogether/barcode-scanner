@@ -146,6 +146,11 @@
       background: var(--primary); color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; pointer-events: none; }
     .cal-day.holiday-cell { background: var(--t-red); }
     .cal-day.edit-target { border-color: var(--orange); box-shadow: inset 0 0 0 2px var(--orange); }
+    /* 2개월 보기: 다음 달 1일 칸 — 왼쪽 굵은 선과 "○월" 표시로 달이 바뀌는 지점을 알린다 */
+    .cal-day.month-start { box-shadow: inset 3px 0 0 var(--primary); }
+    .cal-day.month-start.edit-target { box-shadow: inset 3px 0 0 var(--primary), inset 0 0 0 2px var(--orange); }
+    .cal-month-start { flex-shrink: 0; padding: 0 4px; border-radius: 999px; background: var(--primary); color: #fff;
+      font-size: 10px; font-weight: 700; line-height: 15px; }
     .cal-day-head {
       display: flex; align-items: baseline; gap: 3px; margin-bottom: 2px;
       overflow: hidden;
@@ -4269,12 +4274,11 @@
     const CAL_SPAN_KEY = 'cgm_cal_span';
     let planCalSpan = Number(localStorage.getItem(CAL_SPAN_KEY)) === 2 ? 2 : 1;
 
-    // 연-월 하나에 대한 달력 그리드(cal-grid) HTML을 만든다 (renderCalendar의 월별 렌더링을 분리한 헬퍼)
-    function buildMonthGridHtml(year, month, allPlans, editingStart, today) {
+    // 연-월부터 monthCount개월을 하나로 이어 붙인 달력 그리드(cal-grid) HTML을 만든다.
+    // 2개월 보기에서도 두 달 사이에 빈 칸 없이 같은 주에 이어지고, 다음 달 1일에는 "○월" 표시를 붙인다.
+    function buildMonthGridHtml(year, month, allPlans, editingStart, today, monthCount = 1) {
       const firstDay = new Date(year, month, 1);
-      const lastDay = new Date(year, month + 1, 0);
       const startDow = firstDay.getDay(); // 0=일
-      const daysInMonth = lastDay.getDate();
 
       const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
       let html = DAYS.map(d => `<div class="cal-header">${d}</div>`).join('');
@@ -4285,8 +4289,16 @@
         html += `<div class="cal-day other-month"><span class="cal-day-num">${prev.getDate()}</span></div>`;
       }
 
-      // 이번 달 날짜별 계획 막대 계산
+      // 이번 달(들) 날짜별 계획 막대 계산
+      let totalDays = 0;
+      for (let mi = 0; mi < monthCount; mi++) {
+      const curYear = new Date(year, month + mi, 1).getFullYear();
+      const curMonth = new Date(year, month + mi, 1).getMonth();
+      const daysInMonth = new Date(curYear, curMonth + 1, 0).getDate();
+      totalDays += daysInMonth;
       for (let d = 1; d <= daysInMonth; d++) {
+        const year = curYear, month = curMonth;
+        const monthStart = mi > 0 && d === 1;
         const dateStr = `${year}-${pad(month + 1)}-${pad(d)}`;
         const isToday = dateStr === today;
         const dow = new Date(year, month, d).getDay();
@@ -4338,8 +4350,9 @@
 
         const numClass = holiday ? 'holiday' : (dow === 0 ? 'sunday' : (dow === 6 ? 'saturday' : ''));
         const holidayLabel = holiday ? `<span class="cal-holiday-label" title="${escapeAttr(holiday)}">${escapeHtml(holiday)}</span>` : '';
-        html += `<div class="cal-day${isToday ? ' today-cell' : ''}${holiday ? ' holiday-cell' : ''}${dateStr === editingStart ? ' edit-target' : ''}" data-date="${dateStr}">
+        html += `<div class="cal-day${isToday ? ' today-cell' : ''}${holiday ? ' holiday-cell' : ''}${dateStr === editingStart ? ' edit-target' : ''}${monthStart ? ' month-start' : ''}" data-date="${dateStr}">
           <div class="cal-day-head">
+            ${monthStart ? `<span class="cal-month-start">${month + 1}월</span>` : ''}
             <span class="cal-day-num${numClass ? ' ' + numClass : ''}">${d}</span>
             ${holidayLabel}
           </div>
@@ -4348,9 +4361,10 @@
           ${isToday ? '<span class="cal-today-tag">오늘</span>' : ''}
         </div>`;
       }
+      }
 
       // 다음 달 빈 셀 (7의 배수 맞춤)
-      const total = startDow + daysInMonth;
+      const total = startDow + totalDays;
       const remain = total % 7 === 0 ? 0 : 7 - (total % 7);
       for (let i = 1; i <= remain; i++) {
         html += `<div class="cal-day other-month"><span class="cal-day-num">${i}</span></div>`;
@@ -4367,20 +4381,20 @@
         ? state.plans.find(p => p.id === planEditingPlanId)?.startDate
         : null;
 
-      const months = [];
-      for (let i = 0; i < planCalSpan; i++) {
-        let y = year, m = month + i;
-        if (m > 11) { m -= 12; y += 1; }
-        months.push({ y, m });
-      }
+      // 2개월 보기는 두 달을 한 그리드로 이어 붙이고 제목도 "○년 ○월 ~ ○월" 하나로 표시한다
+      const last = new Date(year, month + planCalSpan - 1, 1);
+      const lastY = last.getFullYear(), lastM = last.getMonth();
+      const title = planCalSpan === 1
+        ? `${year}년 ${month + 1}월`
+        : `${year}년 ${month + 1}월 ~ ${lastY !== year ? `${lastY}년 ` : ''}${lastM + 1}월`;
 
-      els.calGrid.innerHTML = months.map(({ y, m }, i) => `
-        <div class="cal-month-label">${y}년 ${m + 1}월</div>
-        ${i === 0 ? '<span id="calSpanSlot"></span>' : ''}
-        <div class="cal-grid">${buildMonthGridHtml(y, m, allPlans, editingStart, today)}</div>
-      `).join('');
+      els.calGrid.innerHTML = `
+        <div class="cal-month-label">${title}</div>
+        <span id="calSpanSlot"></span>
+        <div class="cal-grid">${buildMonthGridHtml(year, month, allPlans, editingStart, today, planCalSpan)}</div>
+      `;
 
-      // calSpan select는 매번 새로 만들지 않고 기존 DOM 노드를 그대로 첫 달 제목 아래로 옮긴다(상태 보존)
+      // calSpan select는 매번 새로 만들지 않고 기존 DOM 노드를 그대로 제목 아래로 옮긴다(상태 보존)
       const slot = document.getElementById('calSpanSlot');
       if (slot) slot.replaceWith(els.calSpan);
     }
