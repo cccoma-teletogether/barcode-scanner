@@ -158,12 +158,13 @@
     .auto-rules-body { padding-top: 6px; }
     .auto-rules-title { font-size: 12px; font-weight: 700; margin: 8px 0 2px; }
     .auto-rules-title:first-child { margin-top: 0; }
-    .auto-type-rules { display: grid; gap: 4px; margin-bottom: 4px; }
-    .auto-type-rule { display: flex; align-items: center; gap: 6px; font-size: 12px; flex-wrap: nowrap; }
-    .auto-type-rule .auto-type-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .auto-type-rule select, .auto-type-rule input { width: auto; font-size: 12px; padding: 4px 6px; min-height: 0; }
-    .auto-type-rule input { width: 44px; }
-    .auto-type-rule label { white-space: nowrap; flex-shrink: 0; }
+    /* 종류 | 우선순위 | 최대 연속 — 한 표로 정렬해 좁은 화면에서도 한 줄에 들어가게 한다 */
+    .auto-type-rules { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 6px; align-items: center; margin-bottom: 4px; font-size: 12px; }
+    .auto-type-rule { display: contents; }
+    .auto-type-head { font-size: 11px; color: var(--muted); }
+    .auto-type-rule .auto-type-name { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; }
+    .auto-type-rule .auto-type-name span:last-child { overflow: hidden; text-overflow: ellipsis; }
+    .auto-type-rule select { width: auto; font-size: 12px; padding: 4px 6px; min-height: 0; }
     .plan-pin-btn.active { background: var(--t-blue); border-color: var(--primary); }
     .plan-pin-btn:not(.active) { filter: grayscale(1); opacity: .55; }
     .plan-pin-badge { font-size: 10px; padding: 1px 6px; background: var(--t-blue); color: var(--primary); border-color: #bfdbfe; }
@@ -619,7 +620,13 @@
                 <summary class="mini"><strong>세부 규칙</strong> <span id="planAutoRulesSummary" style="color:var(--muted);"></span></summary>
                 <div class="auto-rules-body">
                   <div class="auto-rules-title">종류별 우선순위 · 연속 사용 제한</div>
-                  <div class="mini" style="color:var(--muted); margin-bottom:6px;">우선순위가 높은 종류를 먼저 씁니다. 단, 그 때문에 유효기간을 못 지키는 센서가 늘어나면 따르지 않습니다. 연속은 같은 종류를 이어서 쓸 수 있는 최대 횟수입니다(0 = 제한 없음, 다른 종류가 남아 있지 않으면 잇습니다).</div>
+                  <div class="mini" style="color:var(--muted); margin-bottom:6px; line-height:1.55;">
+                    <b>우선순위</b>: 높은 종류를 먼저 씁니다. 단, 그 때문에 유효기간을 넘기는 센서가 생기면 따르지 않습니다.<br />
+                    <b>최대 연속</b>: 같은 종류를 몇 개까지 이어 붙일지 정합니다. 지금 착용 중인 센서부터 셉니다.<br />
+                    예) CareSens를 착용 중이고 CareSens를 <b>1개</b>로 두면 → 다른 종류 → CareSens → 다른 종류 … 처럼 번갈아 쓰고,
+                    <b>2개</b>로 두면 지금 것 포함 2개를 연달아 쓴 뒤 다른 종류로 바꿉니다.<br />
+                    다른 종류가 남아 있지 않거나, 바꾸면 유효기간을 넘기는 센서가 생길 때는 그대로 이어서 씁니다(빈 날은 만들지 않음).
+                  </div>
                   <div id="planAutoTypeRules" class="auto-type-rules"></div>
                   <div class="auto-rules-title">교체일 회피</div>
                   <div class="mini" style="color:var(--muted); margin-bottom:6px;">교체일(사용 시작일)이 아래 날짜에 걸리면 앞 센서를 최대 N일 일찍 끝내고 교체합니다. 오늘 이전이나 고정된 계획 쪽으로는 당기지 않습니다.</div>
@@ -3901,13 +3908,27 @@
         [...list].sort(edf).forEach(j => { if (cur > j.last) count++; cur += j.p; });
         return count;
       };
-      const result = [];
+      const result = [], runNotes = new Map();
+      result.runNotes = runNotes; // 작업 → 연속 제한 관련 안내 문구
       let rest = [...jobs].sort(pref), cursor = 0, runType = run.typeId, runLen = run.len;
       while (rest.length) {
         const baseline = violations(rest, cursor);
         const fine = c => (cursor > c.last ? 1 : 0) + violations(rest.filter(x => x !== c), cursor + c.p) <= baseline;
         const runOk = c => { const lim = typeMaxConsecutive(c.typeId); return !lim || c.typeId !== runType || runLen < lim; };
-        const pick = rest.find(c => runOk(c) && fine(c)) || rest.find(fine) || [...rest].sort(edf)[0];
+        const firstFine = rest.find(fine);
+        let pick = rest.find(c => runOk(c) && fine(c));
+        // 이번 연속에 지금 착용 중인 센서가 섞여 있으면 그 사실도 밝힌다
+        const runName = () => `${sensorTypeById(runType)?.name || runType}${result.length < runLen ? '(착용 중 포함)' : ''}`;
+        if (pick && firstFine && pick !== firstFine) {
+          // 원래 순서상 먼저였던 센서가 연속 제한에 걸려 다른 종류로 바꿨다
+          runNotes.set(pick, `${runName()} ${runLen}개 연속 → 연속 제한으로 종류 변경`);
+        } else if (!pick) {
+          pick = firstFine || [...rest].sort(edf)[0];
+          if (!runOk(pick)) {
+            const otherLeft = rest.some(c => c.typeId !== runType);
+            runNotes.set(pick, `${runName()} ${runLen + 1}개째 연속 — ${otherLeft ? '종류를 바꾸면 유효기간을 넘기는 센서가 생겨' : '다른 종류가 남아 있지 않아'} 이어서 사용`);
+          }
+        }
         result.push(pick);
         rest = rest.filter(x => x !== pick);
         cursor += pick.p;
@@ -3925,7 +3946,7 @@
       const blockAt = d => blocks.find(b => d >= b.start && d < b.end);
       const out = [];
       let cursor = startDate;
-      for (const { j, mode } of seq) {
+      for (const { j, mode, runNote } of seq) {
         let b;
         while ((b = blockAt(cursor))) cursor = b.end;
         let pulledFrom = null;
@@ -3953,7 +3974,7 @@
         if (mode === 'part' && start > j.lastIso && j.eIso && j.eIso > start) { end = j.eIso; cut = 'expiry'; }
         const nb = blocks.find(x => x.start > start && x.start < end);
         if (nb) { end = nb.start; cut = 'fixed'; }
-        out.push({ j, start, end, cut, pulledFrom });
+        out.push({ j, start, end, cut, pulledFrom, runNote: runNote || null });
         cursor = end;
       }
       out.forEach(x => {
@@ -3980,7 +4001,7 @@
       const tl = makeTimeline(startCursor, blocks);
       const jobs = candidates.map(it => makeAutoJob(it, startCursor, tl)).filter(Boolean);
       const ordered = orderByPreference(jobs, precedingRun(startCursor));
-      return layoutSchedule(ordered.map(j => ({ j, mode: 'full' })), startCursor, blocks).map(sc => {
+      return layoutSchedule(ordered.map(j => ({ j, mode: 'full', runNote: ordered.runNotes.get(j) })), startCursor, blocks).map(sc => {
         const item = sc.j.it, existing = plannedByInv.get(item.id);
         return {
           invId: item.id,
@@ -3997,7 +4018,8 @@
           partialEnd: sc.cut ? sc.end : null,
           partialReason: sc.cut,
           wornDays: sc.cut ? sc.wornDays : null,
-          pulledFrom: sc.pulledFrom
+          pulledFrom: sc.pulledFrom,
+          runNote: sc.runNote
         };
       });
     }
@@ -4095,7 +4117,7 @@
       const summarize = sched => ({ usable: sched.length, partialCount: sched.filter(x => x.partial).length,
         days: sched.reduce((n, x) => n + x.wornDays, 0), endDate: sched.length ? sched[sched.length - 1].end : startDate });
       const finalize = (key, label, seq, lost, note = '') => {
-        const sched = layoutSchedule(seq.map(j => ({ j, mode: 'full' })), startDate, blocks);
+        const sched = layoutSchedule(seq.map(j => ({ j, mode: 'full', runNote: seq.runNotes?.get(j) })), startDate, blocks);
         return { key, label, applicable: true, note, sched, lost, ...summarize(sched) };
       };
       const na = (key, label, reason) => ({ key, label, applicable: false, reason, sched: [], lost: [], usable: 0, endDate: '' });
@@ -4206,7 +4228,7 @@
         return { invId: s.j.it.id, typeId: s.j.typeId, typeName: type?.name || s.j.typeId, serial: s.j.it.serial, lot: s.j.it.lot,
           expiry: s.j.it.expiry, startDate: s.start, endDate: s.end, planId: ex?.id || null, prevStart: ex?.startDate || null,
           warning: false, margin: s.margin, partialEnd: s.partial ? s.end : null, partialReason: s.cut, wornDays: s.partial ? s.wornDays : null,
-          pulledFrom: s.pulledFrom };
+          pulledFrom: s.pulledFrom, runNote: s.runNote };
       }) : [];
       planAutoLost = opt.applicable ? opt.lost.map(j => ({
         invId: j.it.id, typeName: sensorTypeById(j.typeId)?.name || j.typeId, serial: j.it.serial, expiry: j.it.expiry,
@@ -4310,6 +4332,7 @@
               <div class="meta">${p.startDate} ~ ${p.endDate} (유효기간 ${fmtDate(p.expiry) || '-'})${p.margin != null ? ` · 여유 ${p.margin}일` : ''}</div>
               ${p.partialEnd ? `<div class="meta" style="color:#7c3aed;">${p.partialReason && p.partialReason !== 'expiry' ? '조기 교체' : '부분 착용'}: ${escapeHtml(partialEndText({ startDate: p.startDate, partialEnd: p.endDate, partialReason: p.partialReason }))}</div>` : ''}
               ${shortCut ? `<div class="meta" style="color:#b45309;">⚠ 다음 고정 계획까지 ${p.wornDays}일밖에 없어 센서 대부분이 버려집니다. 그래서 기본 선택하지 않았습니다(선택하지 않으면 이 기간은 비워 둡니다). 고정 계획을 옮기거나 필요하면 직접 선택하세요.</div>` : ''}
+              ${p.runNote ? `<div class="meta" style="color:#2563eb;">↔ ${escapeHtml(p.runNote)}</div>` : ''}
               ${p.pulledFrom ? `<div class="meta" style="color:#0f766e;">교체일 회피: ${p.pulledFrom}(${escapeHtml(avoidReasonText(p.pulledFrom))}) 대신 ${daysBetween(p.startDate, p.pulledFrom)}일 앞당겨 시작</div>` : ''}
               ${p.planId ? `<div class="meta" style="color:var(--primary);">기존 계획 ${p.prevStart}${p.prevStart === p.startDate ? ' (변경 없음)' : ` → ${p.startDate}`}</div>` : ''}
               ${p.warning ? `<div class="meta" style="color:var(--red);">⚠ 이 순서대로면 유효기간 규칙상 사용할 수 없습니다(${isGraceType(p.typeId) ? '유효기간 하루 전까지 시작해야 함' : '사용종료일이 유효기간을 넘음'}). 시작일을 직접 조정해주세요.</div>` : ''}
@@ -4365,8 +4388,8 @@
       const r = autoPlanRules(), parts = [];
       const prio = state.sensorTypes.filter(t => typePriority(t.id) !== 3).map(t => `${t.name} ${typePriority(t.id)}`);
       if (prio.length) parts.push(`우선순위 ${prio.join(', ')}`);
-      const consec = state.sensorTypes.filter(t => typeMaxConsecutive(t.id)).map(t => `${t.name} ${typeMaxConsecutive(t.id)}회`);
-      if (consec.length) parts.push(`연속 ${consec.join(', ')}`);
+      const consec = state.sensorTypes.filter(t => typeMaxConsecutive(t.id)).map(t => `${t.name} ${typeMaxConsecutive(t.id)}개`);
+      if (consec.length) parts.push(`최대 연속 ${consec.join(', ')}`);
       const av = [];
       if (r.avoid.holidays) av.push('공휴일');
       if (r.avoid.weekdays.length) av.push([...r.avoid.weekdays].sort().map(d => AUTO_WEEKDAY_NAMES[d]).join(''));
@@ -4376,15 +4399,17 @@
     }
     function renderAutoRuleDetails() {
       const r = autoPlanRules();
-      document.getElementById('planAutoTypeRules').innerHTML = state.sensorTypes.map(t => `
+      document.getElementById('planAutoTypeRules').innerHTML = `
+        <span class="auto-type-head">종류</span><span class="auto-type-head">우선순위</span><span class="auto-type-head">최대 연속</span>` + state.sensorTypes.map(t => `
         <div class="auto-type-rule">
-          <span class="plan-dot" style="background:${sensorTypeColor(t)};"></span>
-          <span class="auto-type-name">${escapeHtml(t.name)}</span>
+          <span class="auto-type-name"><span class="plan-dot" style="background:${sensorTypeColor(t)};"></span><span>${escapeHtml(t.name)}</span></span>
           <select data-prio-type="${escapeAttr(t.id)}" aria-label="${escapeAttr(t.name)} 우선순위">
             ${[5, 4, 3, 2, 1].map(v => `<option value="${v}"${typePriority(t.id) === v ? ' selected' : ''}>${AUTO_PRIORITY_LABELS[v]}</option>`).join('')}
           </select>
-          <label style="display:inline-flex; align-items:center; gap:4px;">연속
-            <input type="number" min="0" max="9" step="1" data-consec-type="${escapeAttr(t.id)}" value="${typeMaxConsecutive(t.id)}" />회</label>
+          <select data-consec-type="${escapeAttr(t.id)}" aria-label="${escapeAttr(t.name)} 최대 연속 개수">
+              ${[0, 1, 2, 3, 4, 5, 6].concat(typeMaxConsecutive(t.id) > 6 ? [typeMaxConsecutive(t.id)] : []).map(v =>
+                `<option value="${v}"${typeMaxConsecutive(t.id) === v ? ' selected' : ''}>${v ? `${v}개` : '제한 없음'}</option>`).join('')}
+          </select>
         </div>`).join('');
       document.getElementById('avoidHolidays').checked = r.avoid.holidays;
       document.getElementById('avoidWeekdays').innerHTML = AUTO_WEEKDAY_NAMES.map((n, i) => `
