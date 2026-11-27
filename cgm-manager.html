@@ -146,6 +146,22 @@
       background: var(--primary); color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; pointer-events: none; }
     .cal-day.holiday-cell { background: var(--t-red); }
     .cal-day.edit-target { border-color: var(--orange); box-shadow: inset 0 0 0 2px var(--orange); }
+    /* 자동 계획 세부 규칙 */
+    .auto-rules { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; background: var(--panel-2); }
+    .auto-rules > summary { cursor: pointer; }
+    .auto-rules-body { padding-top: 6px; }
+    .auto-rules-title { font-size: 12px; font-weight: 700; margin: 8px 0 2px; }
+    .auto-rules-title:first-child { margin-top: 0; }
+    .auto-type-rules { display: grid; gap: 4px; margin-bottom: 4px; }
+    .auto-type-rule { display: flex; align-items: center; gap: 6px; font-size: 12px; flex-wrap: nowrap; }
+    .auto-type-rule .auto-type-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .auto-type-rule select, .auto-type-rule input { width: auto; font-size: 12px; padding: 4px 6px; min-height: 0; }
+    .auto-type-rule input { width: 44px; }
+    .auto-type-rule label { white-space: nowrap; flex-shrink: 0; }
+    .plan-pin-btn.active { background: var(--t-blue); border-color: var(--primary); }
+    .plan-pin-btn:not(.active) { filter: grayscale(1); opacity: .55; }
+    .plan-pin-badge { font-size: 10px; padding: 1px 6px; background: var(--t-blue); color: var(--primary); border-color: #bfdbfe; }
+    .plan-excl-badge { font-size: 10px; padding: 1px 6px; background: var(--t-orange2); color: #b45309; border-color: #fed7aa; }
     /* 2개월 보기: 다음 달 1일 칸 — 왼쪽 굵은 선과 "○월" 표시로 달이 바뀌는 지점을 알린다 */
     .cal-day.month-start { box-shadow: inset 3px 0 0 var(--primary); }
     .cal-day.month-start.edit-target { box-shadow: inset 3px 0 0 var(--primary), inset 0 0 0 2px var(--orange); }
@@ -586,11 +602,34 @@
                 <strong>자동 계획 제안</strong>
                 <span class="mini" id="planAutoSummary"></span>
               </div>
-              <div id="planAutoExpiryDesc" class="mini" style="margin-bottom:8px; color:var(--muted);">센서는 한 번에 하나만 착용한다는 전제로, 유효기간이 임박한 순서대로 종류와 무관하게 한 줄로 이어 붙여 제안합니다. 동시 착용이 필요한 예외 상황은 제안 적용 후 개별적으로 추가해주세요. ⚠ 표시는 이 순서대로면 유효기간 규칙상 사용할 수 없는 항목입니다(유예형은 유효기간 하루 전까지 시작해야 하고, 엄격형은 사용종료일이 유효기간 이내여야 합니다).</div>
+              <div id="planAutoExpiryDesc" class="mini" style="margin-bottom:8px; color:var(--muted);">센서는 한 번에 하나만 착용한다는 전제로, 종류와 무관하게 한 줄로 이어 붙여 제안합니다. 순서는 세부 규칙의 종류별 우선순위가 높은 종류부터, 같은 우선순위 안에서는 유효기간이 임박한 순서입니다(우선순위는 유효기간을 못 지키는 센서가 늘어나지 않는 범위에서만 따릅니다). 이미 등록된 계획은 그대로 두고 빈 자리를 채웁니다. 동시 착용이 필요한 예외 상황은 제안 적용 후 개별적으로 추가해주세요. ⚠ 표시는 이 순서대로면 유효기간 규칙상 사용할 수 없는 항목입니다(유예형은 유효기간 하루 전까지 시작해야 하고, 엄격형은 사용종료일이 유효기간 이내여야 합니다).</div>
               <div style="margin-bottom:8px;">
                 <div class="mini" style="margin-bottom:4px;">Dexcom G7 유효기간 규칙 <span style="color:var(--muted);">— 유예형: 유효기간 하루 전까지 시작하면 이후에도 사용종료일까지 사용 / 엄격형: 사용종료일이 유효기간 이내</span></div>
                 <div id="planAutoRuleList" class="stack" style="gap:6px 12px;"></div>
               </div>
+              <details id="planAutoRules" class="auto-rules">
+                <summary class="mini"><strong>세부 규칙</strong> <span id="planAutoRulesSummary" style="color:var(--muted);"></span></summary>
+                <div class="auto-rules-body">
+                  <div class="auto-rules-title">종류별 우선순위 · 연속 사용 제한</div>
+                  <div class="mini" style="color:var(--muted); margin-bottom:6px;">우선순위가 높은 종류를 먼저 씁니다. 단, 그 때문에 유효기간을 못 지키는 센서가 늘어나면 따르지 않습니다. 연속은 같은 종류를 이어서 쓸 수 있는 최대 횟수입니다(0 = 제한 없음, 다른 종류가 남아 있지 않으면 잇습니다).</div>
+                  <div id="planAutoTypeRules" class="auto-type-rules"></div>
+                  <div class="auto-rules-title">교체일 회피</div>
+                  <div class="mini" style="color:var(--muted); margin-bottom:6px;">교체일(사용 시작일)이 아래 날짜에 걸리면 앞 센서를 최대 N일 일찍 끝내고 교체합니다. 오늘 이전이나 고정된 계획 쪽으로는 당기지 않습니다.</div>
+                  <div class="stack mini" style="gap:6px 12px; align-items:center; margin-bottom:6px;">
+                    <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="avoidHolidays" style="width:14px; height:14px;" />공휴일</label>
+                    <span id="avoidWeekdays" style="display:inline-flex; gap:4px 8px; flex-wrap:wrap;"></span>
+                    <label style="display:inline-flex; align-items:center; gap:4px;">최대
+                      <select id="avoidMaxPull" style="width:auto; font-size:12px; padding:4px 6px;"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>일 당김</label>
+                  </div>
+                  <div class="stack mini" style="gap:6px; align-items:center;">
+                    <input id="avoidRangeFrom" type="date" style="width:auto; font-size:12px; padding:4px 6px;" />~
+                    <input id="avoidRangeTo" type="date" style="width:auto; font-size:12px; padding:4px 6px;" />
+                    <input id="avoidRangeName" placeholder="이름 (예: 여행)" style="width:120px; font-size:12px; padding:4px 6px;" />
+                    <button type="button" class="btn small" id="avoidRangeAdd">회피 기간 추가</button>
+                  </div>
+                  <div id="avoidRangeList" class="mini" style="margin-top:6px;"></div>
+                </div>
+              </details>
               <label class="mini" style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
                 배치 방식
                 <select id="planAutoMode" style="width:auto; font-size:12px; padding:6px 8px;">
@@ -612,13 +651,14 @@
                     <span id="planAutoTargets" style="display:inline-flex; gap:4px 10px; flex-wrap:wrap;"></span>
                   </div>
                 </div>
-                <div class="mini" style="color:var(--muted); margin-bottom:8px;">등록된 계획은 무시하고 미개봉 재고 전부를 시작일부터 공백 없이 다시 배치합니다. 유효기간 규칙을 못 지키는 센서는 일정에서 빼고(손실) 손실 개수를 최소화합니다. ① 순수 손실 최소화 ② 대상 종류를 자기 유효기간 안에서 최대한 뒤로(②′는 대상 종류 손실 허용) ③ 대상 종류를 뺀 나머지는 모두 보장하고 대상 종류가 손실 전담 ④ 이용일수 최대화(Dexcom G7이 엄격형일 때, 끝까지 못 쓰는 G7도 유효기간 종료일까지 부분 착용) 옵션을 골라 일정을 확인한 뒤 적용하세요.</div>
+                <div class="mini" style="color:var(--muted); margin-bottom:8px;">등록된 계획은 무시하고(고정한 계획 📌과 자동 계획에서 제외한 센서의 계획은 그대로 두고) 미개봉 재고 전부를 시작일부터 공백 없이 다시 배치합니다. 유효기간 규칙을 못 지키는 센서는 일정에서 빼고(손실) 손실 개수를 최소화합니다. ① 순수 손실 최소화 ② 대상 종류를 자기 유효기간 안에서 최대한 뒤로(②′는 대상 종류 손실 허용) ③ 대상 종류를 뺀 나머지는 모두 보장하고 대상 종류가 손실 전담 ④ 이용일수 최대화(Dexcom G7이 엄격형일 때, 끝까지 못 쓰는 G7도 유효기간 종료일까지 부분 착용) 옵션을 골라 일정을 확인한 뒤 적용하세요.</div>
                 <div id="planAutoCompare" style="overflow-x:auto;"></div>
               </div>
               <label id="planAutoIncludeLabel" class="mini" style="display:flex; align-items:flex-start; gap:6px; margin-bottom:8px; cursor:pointer;">
                 <input id="planAutoIncludePlanned" type="checkbox" style="width:15px; height:15px; flex-shrink:0; margin-top:1px;" />
-                <span>이미 계획이 있는 재고도 포함해 전체를 다시 배치 — 사용중 센서 종료일 이후부터 시작하며, 유효기간 안에서 GS1을 가장 낮은 우선순위로 둡니다. 적용하면 기존 계획의 시작일이 바뀝니다.</span>
+                <span>이미 계획이 있는 재고도 포함해 전체를 다시 배치 — 사용중 센서 종료일 이후부터 시작합니다. 고정한 계획(📌)과 자동 계획에서 제외한 센서의 계획은 그대로 둡니다. 적용하면 기존 계획의 시작일이 바뀝니다.</span>
               </label>
+              <div id="planAutoExcluded"></div>
               <div id="planAutoList" class="list" style="margin-bottom:10px;"></div>
               <div class="form-actions">
                 <button class="btn" type="button" id="planAutoCloseBtn">닫기</button>
@@ -896,14 +936,31 @@
   <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.23.0/umd/index.min.js"></script>
   <script>
     const STORAGE_KEY = 'cgm_v5';
-    const DEFAULT_SETTINGS = { alertDays: 30, avgShelfMonths: 0, customHolidays: {}, expiryRules: {}, theme: 'system', presoakBorderStyle: 'solid' };
+    const DEFAULT_SETTINGS = { alertDays: 30, avgShelfMonths: 0, customHolidays: {}, expiryRules: {}, theme: 'system', presoakBorderStyle: 'solid', autoPlan: null };
     // 설정 병합: customHolidays·expiryRules 객체를 DEFAULT_SETTINGS와 공유하지 않도록 매번 새로 만든다
     function mergeSettings(src) {
       const s = { ...DEFAULT_SETTINGS, ...(src || {}) };
       const plain = o => o && typeof o === 'object' && !Array.isArray(o) ? { ...o } : {};
       s.customHolidays = plain(src && src.customHolidays);
       s.expiryRules = plain(src && src.expiryRules);
+      s.autoPlan = normalizeAutoPlan(src && src.autoPlan);
       return s;
+    }
+    // 자동 계획 세부 규칙: 종류별 우선순위(1~5)·연속 사용 제한, 교체일 회피(공휴일·요일·기간, 최대 당김 일수)
+    function normalizeAutoPlan(o) {
+      const src = o && typeof o === 'object' ? o : {};
+      const plain = x => x && typeof x === 'object' && !Array.isArray(x) ? { ...x } : {};
+      const av = src.avoid && typeof src.avoid === 'object' ? src.avoid : {};
+      return {
+        typePriority: plain(src.typePriority),
+        maxConsecutive: plain(src.maxConsecutive),
+        avoid: {
+          holidays: !!av.holidays,
+          weekdays: Array.isArray(av.weekdays) ? av.weekdays.map(Number).filter(n => n >= 0 && n <= 6) : [],
+          ranges: Array.isArray(av.ranges) ? av.ranges.filter(r => r && r.from && r.to).map(r => ({ from: r.from, to: r.to, name: r.name || '' })) : [],
+          maxPull: [1, 2, 3].includes(Number(av.maxPull)) ? Number(av.maxPull) : 2
+        }
+      };
     }
     const DEFAULT_SENSOR_TYPES = [
       { id: 'caresens_air', name: 'CareSens Air', wearDays: 15, color: '#00c6fb', gtin: '08809126640655', model: 'CGM-ST-002', presoakDays: 2 },
@@ -3349,7 +3406,7 @@
         return `<span class="badge" style="background:var(--t-green); color:#15803d; border-color:#bbf7d0;">${label} ${plan.startDate} ~ ${end}</span>`;
       }
       if (plan.partialEnd) {
-        return `<span class="badge" style="background:var(--t-purple); color:#6d28d9; border-color:#c4b5fd;" title="유효기간 종료일에 사용 중 종료됩니다">부분 착용 ${plan.startDate} ~ ${end} (유효기간 종료)</span>`;
+        return `<span class="badge" style="background:var(--t-purple); color:#6d28d9; border-color:#c4b5fd;" title="${escapeAttr(partialEndText(plan))}">${isExpiryPartial(plan) ? '부분 착용' : '조기 교체'} ${plan.startDate} ~ ${end} (${isExpiryPartial(plan) ? '유효기간 종료' : '조기 교체'})</span>`;
       }
       const duringExp = expiryDuringUse(plan);
       if (duringExp) {
@@ -3624,6 +3681,20 @@
       return addDays(plan.startDate, type.wearDays) || plan.startDate;
     }
 
+    // 사용종료일보다 일찍 끝내는 계획(partialEnd)의 사유: 'expiry' 유효기간 종료(기본), 'fixed' 다음 고정 계획 전 조기 교체, 'avoid' 교체일 회피
+    function isExpiryPartial(plan) {
+      return !!plan.partialEnd && (!plan.partialReason || plan.partialReason === 'expiry');
+    }
+    function partialEndText(plan) {
+      const days = daysBetween(plan.startDate, plan.partialEnd);
+      if (plan.partialReason === 'fixed') return `다음 계획 시작일(${plan.partialEnd})에 조기 교체, ${days}일 착용`;
+      if (plan.partialReason === 'avoid') return `교체일 회피로 ${plan.partialEnd}에 조기 교체, ${days}일 착용`;
+      return `유효기간 종료일(${plan.partialEnd})에 사용 중 종료, ${days}일만 착용`;
+    }
+    function partialShortLabel(plan) {
+      return isExpiryPartial(plan) ? '유효기간 끝' : '조기 교체';
+    }
+
     // Dexcom G7 계획 중 사용 도중에 유효기간이 도래하는 계획(시작일 < 유효기간 ≤ 종료일)의 유효기간. 아니면 ''.
     // 옵션 ④로 적용했는지(partialEnd 저장 여부)와 상관없이 "사용 중 유효기간이 끝난다"는 상태를 알아볼 수 있게 한다
     function expiryDuringUse(plan) {
@@ -3647,13 +3718,16 @@
       });
     }
 
-    // 기준 계획 이후(종류 무관, 시작일 >= 기준)의 모든 계획을 delta일만큼 밀기
-    function shiftPlansAfter(fromDate, deltaDay, excludePlanId) {
+    // 기준 계획 이후(종류 무관, 시작일 >= 기준)의 모든 계획을 delta일만큼 밀기.
+    // 고정한 계획은 직접 옮기는 그 계획(movingPlanId)이 아니면 움직이지 않는다
+    function shiftPlansAfter(fromDate, deltaDay, excludePlanId, movingPlanId = null) {
       state.plans = state.plans.map(p => {
         if (p.id === excludePlanId) return p;
         if (p.startDate < fromDate) return p;
+        if (p.pinned && p.id !== movingPlanId) return p;
         const moved = { ...p, startDate: addDays(p.startDate, deltaDay) };
         delete moved.partialEnd; // 시작일이 바뀌었으니 부분 착용 종료일은 더 이상 유효하지 않다
+        delete moved.partialReason;
         return moved;
       });
     }
@@ -3718,6 +3792,7 @@
             <span style="flex:1; text-align:left;">
               <span style="font-weight:700;">${escapeHtml(type?.name || '-')}</span>
               <span class="badge" style="margin-left:6px; background:var(--t-slate); color:var(--muted); border-color:var(--line); font-size:10px;">우선순위 ${rank}</span>
+              ${isAutoExcluded(item) ? '<span class="badge plan-excl-badge" style="margin-left:4px;" title="자동 계획 제안에서 빠지는 센서">자동 제외</span>' : ''}
               <span class="meta" style="display:block;">LOT ${escapeHtml(item.lot || '-')}${item.serial ? ` · S/N ${escapeHtml(item.serial)}` : ''} · 유효기간 ${fmtDate(item.expiry)}</span>
               <span class="meta" style="color:var(--primary);">↔ 달력에 드래그</span>
             </span>
@@ -3727,77 +3802,188 @@
     }
 
     // ── 자동 계획 제안 ────────────────────────────────────────────────────
-    // 센서는 한 번에 하나만 부착한다는 전제로, 미개봉 재고 전체를 유효기간 임박 순으로
-    // 종류와 무관하게 하나의 줄로 이어 붙여 시작일을 제안한다 (suggestPlanStartDate와 동일한 규칙).
-    // includePlanned가 true면 이미 계획이 있는 재고도 함께 전체를 다시 배치한다(등록된 계획은 무시하고
-    // 사용중 센서 종료일 이후부터 시작). 이때는 유효기간 내에서 GS1을 가장 낮은 우선순위로 둔다.
+    // 센서는 한 번에 하나만 부착한다는 전제로, 미개봉 재고 전체를 하나의 줄로 이어 붙여 시작일을 제안한다.
+    // 순서는 종류별 우선순위(세부 규칙) → 유효기간 임박 순이되, 유효기간을 못 지키는 센서가 늘어나지 않는 범위에서만 따른다.
+    // includePlanned가 true면 이미 계획이 있는 재고도 함께 전체를 다시 배치한다(사용중 센서 종료일 이후부터 시작).
+    // 고정한 계획과 자동 계획에서 제외한 센서의 계획은 움직이지 않고 그 앞뒤를 채운다.
+
+    function autoPlanRules() {
+      if (!state.settings.autoPlan) state.settings.autoPlan = normalizeAutoPlan(null);
+      return state.settings.autoPlan;
+    }
+    // 종류별 우선순위 (5 최우선 ~ 1 최후순위). 기본은 3, GS1만 기존 동작대로 1
+    function typePriority(typeId) {
+      const v = Number(autoPlanRules().typePriority[typeId]);
+      return v >= 1 && v <= 5 ? v : (typeId === 'gs1' ? 1 : 3);
+    }
+    // 같은 종류를 이어서 쓸 수 있는 최대 횟수 (0 = 제한 없음)
+    function typeMaxConsecutive(typeId) {
+      const v = Number(autoPlanRules().maxConsecutive[typeId]);
+      return v > 0 ? v : 0;
+    }
+    // 재고 단위 "자동 계획 제외". 보류 기한(until)이 지나면 다시 대상에 들어간다
+    function isAutoExcluded(item, today = todayISO()) {
+      const x = item && item.autoExclude;
+      return !!x && (!x.until || today <= x.until);
+    }
+    function isAvoidedSwapDay(dateStr) {
+      const a = autoPlanRules().avoid;
+      if (a.holidays && holidayName(dateStr)) return true;
+      if (a.weekdays.length && a.weekdays.includes(fromISODate(dateStr)?.getDay())) return true;
+      return a.ranges.some(r => dateStr >= r.from && dateStr <= r.to);
+    }
+    function swapAvoidActive() {
+      const a = autoPlanRules().avoid;
+      return a.holidays || a.weekdays.length > 0 || a.ranges.length > 0;
+    }
+    // 자동 배치가 다시 배치하지 않는 계획: 고정한 계획, 자동 계획에서 제외한 센서의 계획
+    function isFixedPlan(p) {
+      if (p.pinned) return true;
+      return isAutoExcluded(state.inventory.find(x => x.id === p.invId));
+    }
+    // 계획들을 startDate 이후에 걸친 고정 구간 [start, end)로 만든다 (end에 다음 센서 시작 가능)
+    function planBlocks(plans, startDate) {
+      return plans.map(p => ({ plan: p, start: p.startDate, end: planEndDate(p) }))
+        .filter(b => b.end > startDate && b.end > b.start)
+        .sort((a, b) => a.start.localeCompare(b.start));
+    }
+    // 고정 구간을 뺀 "빈 날"만 세는 가상 시간축. 배치 알고리즘은 가상 시간축에서 계산하고, 실제 날짜 배치는 layoutSchedule이 한다
+    function makeTimeline(startDate, blocks) {
+      const segs = blocks.map(b => [Math.max(0, daysBetween(startDate, b.start)), daysBetween(startDate, b.end)]);
+      const free = x => x <= 0 ? x : x - segs.reduce((n, [bs, be]) => n + Math.max(0, Math.min(be, x) - bs), 0);
+      return { free };
+    }
+    // 배치용 작업: p 사용일수, last 시작 가능한 마지막 날, e 유효기간 종료일 (모두 startDate 기준 가상 일수)
+    function makeAutoJob(it, startDate, tl) {
+      const lastIso = latestStartForExpiry(it.typeId, it.expiry);
+      const lastR = daysBetween(startDate, lastIso);
+      const eR = it.expiry ? daysBetween(startDate, it.expiry) : 1e9;
+      if (lastR == null || eR == null) return null;
+      return {
+        it, typeId: it.typeId, p: sensorTypeById(it.typeId)?.wearDays || 0, lastIso, eIso: it.expiry || '',
+        last: lastR < 0 ? lastR : tl.free(lastR + 1) - 1,
+        e: eR < 0 ? eR : tl.free(eR),
+        grace: isGraceType(it.typeId),
+        partialOk: PARTIAL_WEAR_TYPE_IDS.has(it.typeId) && !isGraceType(it.typeId)
+      };
+    }
+    // 시작일 직전까지 실제로 같은 종류를 연속 몇 번 썼는지 (연속 사용 제한에 이어서 반영)
+    function precedingRun(startDate) {
+      let typeId = null, len = 0;
+      inUsePseudoPlans().filter(p => p.startDate < startDate).sort((a, b) => a.startDate.localeCompare(b.startDate))
+        .forEach(p => { if (p.typeId === typeId) len++; else { typeId = p.typeId; len = 1; } });
+      return { typeId, len };
+    }
+    // 선호 순서(우선순위 높은 종류 → 유효기간 임박 순)대로 고르되, 유효기간을 못 지키는 센서가 늘어나는 선택은 하지 않는다.
+    // 연속 사용 제한도 가능한 한 지키고, 남은 센서가 그 종류뿐이면 어쩔 수 없이 잇는다.
+    function orderByPreference(jobs, run = { typeId: null, len: 0 }) {
+      const pref = (a, b) => typePriority(b.typeId) - typePriority(a.typeId) || comparePlanPriority(a.it, b.it);
+      // 종류별로 시작할 수 있는 가장 늦은 날이 있으므로, 그 날+사용일수(완료 기한) 순이 위반을 가장 적게 만든다
+      const edf = (a, b) => (a.last + a.p) - (b.last + b.p) || a.last - b.last;
+      const violations = (list, from) => {
+        let cur = from, count = 0;
+        [...list].sort(edf).forEach(j => { if (cur > j.last) count++; cur += j.p; });
+        return count;
+      };
+      const result = [];
+      let rest = [...jobs].sort(pref), cursor = 0, runType = run.typeId, runLen = run.len;
+      while (rest.length) {
+        const baseline = violations(rest, cursor);
+        const fine = c => (cursor > c.last ? 1 : 0) + violations(rest.filter(x => x !== c), cursor + c.p) <= baseline;
+        const runOk = c => { const lim = typeMaxConsecutive(c.typeId); return !lim || c.typeId !== runType || runLen < lim; };
+        const pick = rest.find(c => runOk(c) && fine(c)) || rest.find(fine) || [...rest].sort(edf)[0];
+        result.push(pick);
+        rest = rest.filter(x => x !== pick);
+        cursor += pick.p;
+        if (pick.typeId === runType) runLen++; else { runType = pick.typeId; runLen = 1; }
+      }
+      return result;
+    }
+    // 정해진 순서를 실제 날짜에 배치한다. seq: [{ j, mode: 'full' | 'part' }]
+    // - 고정 구간 안이면 구간이 끝난 뒤로 넘기고, 다음 고정 구간 시작 전에 다 못 쓰는 센서는 그 시작일에 조기 교체(cut 'fixed')
+    // - 'part'(옵션 ④)는 유효기간 종료일까지 부분 착용(cut 'expiry'), 앞당겨져 전부 착용이 가능해지면 전부 착용
+    // - 교체일이 회피 날짜면 앞 센서를 최대 maxPull일 일찍 끝내고 교체(cut 'avoid'). 오늘·고정 구간 이전으로는 당기지 않는다
+    function layoutSchedule(seq, startDate, blocks) {
+      const today = todayISO();
+      const avoidOn = swapAvoidActive(), maxPull = autoPlanRules().avoid.maxPull;
+      const blockAt = d => blocks.find(b => d >= b.start && d < b.end);
+      const out = [];
+      let cursor = startDate;
+      for (const { j, mode } of seq) {
+        let b;
+        while ((b = blockAt(cursor))) cursor = b.end;
+        let pulledFrom = null;
+        if (avoidOn && isAvoidedSwapDay(cursor)) {
+          const prev = out[out.length - 1];
+          let lower = today;
+          if (prev && addDays(prev.start, 1) > lower) lower = addDays(prev.start, 1);
+          blocks.forEach(x => { if (x.end <= cursor && x.end > lower) lower = x.end; });
+          for (let k = 1; k <= maxPull; k++) {
+            const d = addDays(cursor, -k);
+            if (d < lower) break;
+            if (!isAvoidedSwapDay(d)) {
+              if (prev && prev.end > d) {
+                prev.end = d;
+                if (!prev.cut) prev.cut = 'avoid';
+              }
+              pulledFrom = cursor;
+              cursor = d;
+              break;
+            }
+          }
+        }
+        const start = cursor;
+        let end = addDays(start, j.p), cut = null;
+        if (mode === 'part' && start > j.lastIso && j.eIso && j.eIso > start) { end = j.eIso; cut = 'expiry'; }
+        const nb = blocks.find(x => x.start > start && x.start < end);
+        if (nb) { end = nb.start; cut = 'fixed'; }
+        out.push({ j, start, end, cut, pulledFrom });
+        cursor = end;
+      }
+      out.forEach(x => {
+        x.partial = !!x.cut;
+        x.wornDays = daysBetween(x.start, x.end);
+        x.margin = daysBetween(x.start, x.j.lastIso);
+      });
+      return out;
+    }
+
     function buildAutoPlanProposals(includePlanned = false, startOverride = null) {
       const plannedByInv = new Map(state.plans.map(p => [p.invId, p]));
+      const fixedInvIds = new Set(state.plans.filter(isFixedPlan).map(p => p.invId));
       const candidates = state.inventory
-        .filter(it => !it.openedAt && !it.archived && (includePlanned || !plannedByInv.has(it.id)))
+        .filter(it => !it.openedAt && !it.archived && !isAutoExcluded(it) && !fixedInvIds.has(it.id) && (includePlanned || !plannedByInv.has(it.id)))
         .map(it => ({ ...it, _calc: calc(it) }))
         .filter(it => (it._calc.status === 'ready' || it._calc.status === 'shelf_warning') && sensorTypeById(it.typeId));
 
       const today = todayISO();
       const busyEnd = latestBusyEnd(!includePlanned);
       const startCursor = startOverride || (busyEnd && busyEnd > today ? busyEnd : today);
-      const ordered = includePlanned
-        ? orderWithLowPriorityGs1(candidates, startCursor)
-        : candidates.sort(comparePlanPriority);
-
-      let cursor = startCursor;
-      return ordered.map(item => {
-        const type = sensorTypeById(item.typeId);
-        const startDate = cursor;
-        const endDate = addDays(startDate, type.wearDays);
-        const existing = plannedByInv.get(item.id);
-        cursor = endDate;
+      // 다시 배치하지 않는 계획(전체 재배치면 고정·제외 센서의 계획만, 아니면 등록된 계획 전부)은 그 자리에 두고 앞뒤를 채운다
+      const blocks = planBlocks(includePlanned ? state.plans.filter(isFixedPlan) : state.plans, startCursor);
+      const tl = makeTimeline(startCursor, blocks);
+      const jobs = candidates.map(it => makeAutoJob(it, startCursor, tl)).filter(Boolean);
+      const ordered = orderByPreference(jobs, precedingRun(startCursor));
+      return layoutSchedule(ordered.map(j => ({ j, mode: 'full' })), startCursor, blocks).map(sc => {
+        const item = sc.j.it, existing = plannedByInv.get(item.id);
         return {
           invId: item.id,
           typeId: item.typeId,
-          typeName: type.name,
+          typeName: sensorTypeById(item.typeId).name,
           serial: item.serial,
           lot: item.lot,
           expiry: item.expiry,
-          startDate,
-          endDate,
+          startDate: sc.start,
+          endDate: sc.end,
           planId: existing?.id || null,
           prevStart: existing?.startDate || null,
-          warning: startDate > latestStartForExpiry(item.typeId, item.expiry)
+          warning: sc.start > sc.j.lastIso,
+          partialEnd: sc.cut ? sc.end : null,
+          partialReason: sc.cut,
+          wornDays: sc.cut ? sc.wornDays : null,
+          pulledFrom: sc.pulledFrom
         };
       });
-    }
-
-    // 기본은 유효기간 임박순이되 GS1은 맨 뒤로 미룬다. 단, 미루면 다른 센서가 유효기간을 넘기게 되는 경우에는
-    // 미루지 않는다(유효기간 안에 시작하지 못하는 센서가 늘어나지 않는 범위에서만 우선순위를 낮춤).
-    function orderWithLowPriorityGs1(items, startDate) {
-      const dur = it => sensorTypeById(it.typeId)?.wearDays || 0;
-      const pref = (a, b) => ((a.typeId === 'gs1') - (b.typeId === 'gs1')) || comparePlanPriority(a, b);
-      // 종류별로 시작할 수 있는 가장 늦은 날(latestStartForExpiry)이 있으므로, 그 날+사용일수(완료 기한) 순이 위반을 가장 적게 만든다
-      const lastStart = it => latestStartForExpiry(it.typeId, it.expiry);
-      const edf = (a, b) => addDays(lastStart(a), dur(a)).localeCompare(addDays(lastStart(b), dur(b)));
-      const late = (it, start) => start > lastStart(it);
-      const violations = (list, from) => {
-        let cur = from, count = 0;
-        [...list].sort(edf).forEach(it => { if (late(it, cur)) count++; cur = addDays(cur, dur(it)); });
-        return count;
-      };
-      const result = [];
-      let rest = [...items].sort(pref);
-      let cursor = startDate;
-      while (rest.length) {
-        const baseline = violations(rest, cursor);
-        let pick = rest.find(c => {
-          const others = rest.filter(x => x !== c);
-          const own = late(c, cursor) ? 1 : 0;
-          return own + violations(others, addDays(cursor, dur(c))) <= baseline;
-        });
-        if (!pick) pick = [...rest].sort(edf)[0];
-        result.push(pick);
-        rest = rest.filter(x => x !== pick);
-        cursor = addDays(cursor, dur(pick));
-      }
-      return result;
     }
 
     // 옵션 ④에서 유효기간 종료일까지 부분 착용을 허용하는 종류 (우선 Dexcom G7만, 엄격형일 때만 의미가 있다)
@@ -3860,15 +4046,15 @@
     // 옵션 ① 순수 최소화 ② 대상 종류를 자기 유효기간 안에서 최대한 뒤로(②′는 대상 종류 손실 허용) ③ 대상 종류가 손실 전담
     function computeLossOptions(startDate, targetTypeIds) {
       const typeIdx = id => { const i = state.sensorTypes.findIndex(t => t.id === id); return i < 0 ? 999 : i; };
+      // 고정한 계획·제외 센서의 계획은 그대로 두고, 그 구간을 뺀 가상 시간축에서 계산한다
+      const fixedPlans = state.plans.filter(isFixedPlan);
+      const fixedInvIds = new Set(fixedPlans.map(p => p.invId));
+      const blocks = planBlocks(fixedPlans, startDate);
+      const tl = makeTimeline(startDate, blocks);
       const jobs = state.inventory
-        .filter(it => !it.openedAt && !it.archived && sensorTypeById(it.typeId))
-        .map(it => {
-          const lastIso = latestStartForExpiry(it.typeId, it.expiry);
-          return { it, typeId: it.typeId, p: sensorTypeById(it.typeId).wearDays || 0, lastIso, last: daysBetween(startDate, lastIso),
-            e: it.expiry ? (daysBetween(startDate, it.expiry) ?? 1e9) : 1e9, grace: isGraceType(it.typeId),
-            partialOk: PARTIAL_WEAR_TYPE_IDS.has(it.typeId) && !isGraceType(it.typeId) };
-        })
-        .filter(j => j.p > 0 && j.last != null);
+        .filter(it => !it.openedAt && !it.archived && !isAutoExcluded(it) && !fixedInvIds.has(it.id) && sensorTypeById(it.typeId))
+        .map(it => makeAutoJob(it, startDate, tl))
+        .filter(j => j && j.p > 0);
       const dl = j => j.last + j.p; // 보정 마감 (시작일 기준 제약을 종료일 기준 문제로 바꾼 값)
       const tie = (a, b) => typeIdx(a.typeId) - typeIdx(b.typeId) || (a.it.serial || '').localeCompare(b.it.serial || '')
         || (a.it.createdAt || '').localeCompare(b.it.createdAt || '') || a.it.id.localeCompare(b.it.id);
@@ -3883,16 +4069,18 @@
             const cand = kept.filter(x => !protect(x));
             if (!cand.length) return null;
             const mx = Math.max(...cand.map(x => x.p));
-            const rm = cand.filter(x => x.p === mx).sort((a, b) => dl(b) - dl(a) || tie(b, a))[0];
+            // 같은 사용일수 중에서는 우선순위가 낮은 종류를 먼저 손실로 돌린다(손실 개수는 그대로 최소)
+            const rm = cand.filter(x => x.p === mx).sort((a, b) => typePriority(a.typeId) - typePriority(b.typeId) || dl(b) - dl(a) || tie(b, a))[0];
             kept.splice(kept.indexOf(rm), 1); C -= rm.p; lost.push(rm);
           }
         }
         return { kept, lost };
       };
+      const summarize = sched => ({ usable: sched.length, partialCount: sched.filter(x => x.partial).length,
+        days: sched.reduce((n, x) => n + x.wornDays, 0), endDate: sched.length ? sched[sched.length - 1].end : startDate });
       const finalize = (key, label, seq, lost, note = '') => {
-        let c = 0;
-        const sched = seq.map(j => { const s = c; c += j.p; return { j, start: addDays(startDate, s), end: addDays(startDate, c), margin: j.last - s }; });
-        return { key, label, applicable: true, note, sched, lost, usable: seq.length, days: c, endDate: addDays(startDate, c) };
+        const sched = layoutSchedule(seq.map(j => ({ j, mode: 'full' })), startDate, blocks);
+        return { key, label, applicable: true, note, sched, lost, ...summarize(sched) };
       };
       const na = (key, label, reason) => ({ key, label, applicable: false, reason, sched: [], lost: [], usable: 0, endDate: '' });
       const targetIds = new Set(targetTypeIds || []);
@@ -3903,7 +4091,8 @@
 
       // ① 순수 손실 최소화
       const m1 = moore(jobs);
-      options.push(finalize('1', '① 순수 손실 최소화', m1.kept, m1.lost));
+      // 손실 개수는 최소로 정한 뒤, 남은 센서의 순서는 종류별 우선순위·연속 제한을 따른다(모두 유효기간 안에 시작하는 범위에서)
+      options.push(finalize('1', '① 순수 손실 최소화', orderByPreference(m1.kept, precedingRun(startDate)), m1.lost));
 
       // ② 대상 종류를 자기 유효기간 안에서 최대한 뒤로: 대상은 손실시키지 않는 범위에서 손실 최소화 후, 대상을 뒤쪽에 배치
       if (!hasTarget) options.push(na('2', `② ${targetName} 후순위`, targetIds.size ? '대상 종류의 미개봉 재고가 없습니다.' : '대상 종류를 선택하세요.'));
@@ -3953,17 +4142,15 @@
       // ④ 이용일수 최대화: 유효기간 안에 끝까지 못 쓰는 센서(우선 엄격형 G7만)도 착용 중 유효기간 종료일까지는 사용(부분 착용)하고,
       // 총 이용일수가 가장 길어지도록 배치한다. 센서를 통째로 손실시키는 것보다 일부라도 쓰는 편이 낫다는 관점.
       const r4 = solveMaxDays(jobs);
-      const sched4 = [], lost4 = [];
+      const seq4 = [], lost4 = [];
       r4.order.forEach((j, i) => {
         const a = r4.acts[i];
-        if (a.act === 'skip') { lost4.push(j); return; }
-        const full = a.act === 'full', endOff = full ? a.to : j.e;
-        sched4.push({ j, start: addDays(startDate, a.from), end: addDays(startDate, endOff), margin: j.last - a.from, partial: !full, wornDays: endOff - a.from });
+        if (a.act === 'skip') lost4.push(j); else seq4.push({ j, mode: a.act === 'full' ? 'full' : 'part' });
       });
+      const sched4 = layoutSchedule(seq4, startDate, blocks);
       options.push({ key: '4', label: '④ 이용일수 최대화 (G7 부분 착용 허용)', applicable: true,
-        note: '유효기간 안에 끝까지 못 쓰는 Dexcom G7(엄격형)은 유효기간 종료일까지는 사용', sched: sched4, lost: lost4,
-        usable: sched4.length, partialCount: sched4.filter(x => x.partial).length, days: r4.days, endDate: addDays(startDate, r4.days) });
-      return { startDate, targetTypeIds: [...targetIds], total: jobs.length, options };
+        note: '유효기간 안에 끝까지 못 쓰는 Dexcom G7(엄격형)은 유효기간 종료일까지는 사용', sched: sched4, lost: lost4, ...summarize(sched4) });
+      return { startDate, targetTypeIds: [...targetIds], total: jobs.length, fixedCount: blocks.length, options };
     }
 
     function lossSummaryText(lost) {
@@ -4002,7 +4189,8 @@
         const type = sensorTypeById(s.j.typeId), ex = planned.get(s.j.it.id);
         return { invId: s.j.it.id, typeId: s.j.typeId, typeName: type?.name || s.j.typeId, serial: s.j.it.serial, lot: s.j.it.lot,
           expiry: s.j.it.expiry, startDate: s.start, endDate: s.end, planId: ex?.id || null, prevStart: ex?.startDate || null,
-          warning: false, margin: s.margin, partialEnd: s.partial ? s.end : null, wornDays: s.partial ? s.wornDays : null };
+          warning: false, margin: s.margin, partialEnd: s.partial ? s.end : null, partialReason: s.cut, wornDays: s.partial ? s.wornDays : null,
+          pulledFrom: s.pulledFrom };
       }) : [];
       planAutoLost = opt.applicable ? opt.lost.map(j => ({
         invId: j.it.id, typeName: sensorTypeById(j.typeId)?.name || j.typeId, serial: j.it.serial, expiry: j.it.expiry,
@@ -4070,12 +4258,16 @@
     }
 
     function renderAutoPlanList() {
+      renderAutoExcluded();
       const lossMode = els.planAutoMode.value === 'loss';
       const lostHtml = lossMode && planAutoLost.length ? `
         <div class="mini" style="margin:8px 0 4px; color:var(--red); font-weight:700;">손실 ${planAutoLost.length}건 — 유효기간 규칙상 일정에 넣을 수 없어 뺀 재고</div>
         ${planAutoLost.map(l => `
           <div class="item" style="border-left:4px solid var(--red); background:var(--t-red);">
-            <div class="name">${escapeHtml(l.typeName)}${l.serial ? ` · S/N ${escapeHtml(l.serial)}` : ''}</div>
+            <div class="stack" style="justify-content:space-between; align-items:center; flex-wrap:nowrap; gap:8px;">
+              <div class="name">${escapeHtml(l.typeName)}${l.serial ? ` · S/N ${escapeHtml(l.serial)}` : ''}</div>
+              <button type="button" class="btn small" data-exclude-inv="${escapeAttr(l.invId)}" title="이 센서를 자동 계획 제안에서 제외">제외</button>
+            </div>
             <div class="meta">유효기간 ${fmtDate(l.expiry) || '-'} · 시작 가능한 마지막 날 ${l.lastIso}${l.pastStart ? ' (시작일 이전)' : ''}을(를) 지켜 배치할 수 없음</div>
             ${l.planId ? '<div class="meta" style="color:var(--red);">기존 계획이 있으면 적용 시 삭제됩니다.</div>' : ''}
           </div>`).join('')}` : '';
@@ -4092,16 +4284,21 @@
       els.planAutoList.innerHTML = planAutoProposals.map((p, idx) => {
         const type = sensorTypeById(p.typeId);
         const color = sensorTypeColor(type);
+        // 고정 계획 앞 빈 자리가 짧아 사용기간의 절반도 못 쓰고 교체하는 센서는 낭비가 크므로 기본 선택하지 않는다
+        const shortCut = p.partialReason === 'fixed' && p.wornDays < (type?.wearDays || 0) / 2;
         return `
-          <label class="item" style="display:flex; align-items:center; gap:10px; border-left:4px solid ${color}; ${p.warning ? 'background:var(--t-red);' : ''}">
-            <input type="checkbox" data-auto-idx="${idx}" ${p.warning ? '' : 'checked'} style="width:16px; height:16px; flex-shrink:0;" />
+          <label class="item" style="display:flex; align-items:center; gap:10px; border-left:4px solid ${color}; ${p.warning ? 'background:var(--t-red);' : (shortCut ? 'background:var(--t-orange2);' : '')}">
+            <input type="checkbox" data-auto-idx="${idx}" ${p.warning || shortCut ? '' : 'checked'} style="width:16px; height:16px; flex-shrink:0;" />
             <div style="flex:1;">
               <div class="name">${escapeHtml(p.typeName)}${p.serial ? ` · S/N ${escapeHtml(p.serial)}` : ''}</div>
               <div class="meta">${p.startDate} ~ ${p.endDate} (유효기간 ${fmtDate(p.expiry) || '-'})${p.margin != null ? ` · 여유 ${p.margin}일` : ''}</div>
-              ${p.partialEnd ? `<div class="meta" style="color:#7c3aed;">부분 착용: 유효기간 종료일(${p.endDate})까지 ${p.wornDays}일만 착용</div>` : ''}
+              ${p.partialEnd ? `<div class="meta" style="color:#7c3aed;">${p.partialReason && p.partialReason !== 'expiry' ? '조기 교체' : '부분 착용'}: ${escapeHtml(partialEndText({ startDate: p.startDate, partialEnd: p.endDate, partialReason: p.partialReason }))}</div>` : ''}
+              ${shortCut ? `<div class="meta" style="color:#b45309;">⚠ 다음 고정 계획까지 ${p.wornDays}일밖에 없어 센서 대부분이 버려집니다. 그래서 기본 선택하지 않았습니다(선택하지 않으면 이 기간은 비워 둡니다). 고정 계획을 옮기거나 필요하면 직접 선택하세요.</div>` : ''}
+              ${p.pulledFrom ? `<div class="meta" style="color:#0f766e;">교체일 회피: ${p.pulledFrom}(${escapeHtml(avoidReasonText(p.pulledFrom))}) 대신 ${daysBetween(p.startDate, p.pulledFrom)}일 앞당겨 시작</div>` : ''}
               ${p.planId ? `<div class="meta" style="color:var(--primary);">기존 계획 ${p.prevStart}${p.prevStart === p.startDate ? ' (변경 없음)' : ` → ${p.startDate}`}</div>` : ''}
               ${p.warning ? `<div class="meta" style="color:var(--red);">⚠ 이 순서대로면 유효기간 규칙상 사용할 수 없습니다(${isGraceType(p.typeId) ? '유효기간 하루 전까지 시작해야 함' : '사용종료일이 유효기간을 넘음'}). 시작일을 직접 조정해주세요.</div>` : ''}
             </div>
+            <button type="button" class="btn small" data-exclude-inv="${escapeAttr(p.invId)}" title="이 센서를 자동 계획 제안에서 제외">제외</button>
           </label>`;
       }).join('') + lostHtml;
     }
@@ -4136,9 +4333,169 @@
       showToast(`${sensorTypeById(id)?.name || id}: ${sel.value === 'grace' ? '유예형' : '엄격형'} 규칙을 적용했습니다.`);
     });
 
+    // ── 자동 계획 세부 규칙 UI ──
+    const AUTO_WEEKDAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
+    const AUTO_PRIORITY_LABELS = { 5: '5 최우선', 4: '4 높음', 3: '3 보통', 2: '2 낮음', 1: '1 최후순위' };
+    function avoidReasonText(dateStr) {
+      const a = autoPlanRules().avoid;
+      const parts = [];
+      if (a.holidays && holidayName(dateStr)) parts.push(holidayName(dateStr));
+      const dow = fromISODate(dateStr)?.getDay();
+      if (a.weekdays.includes(dow)) parts.push(`${AUTO_WEEKDAY_NAMES[dow]}요일`);
+      a.ranges.filter(r => dateStr >= r.from && dateStr <= r.to).forEach(r => parts.push(r.name || '회피 기간'));
+      return parts.join('·') || '회피 날짜';
+    }
+    function autoRulesSummaryText() {
+      const r = autoPlanRules(), parts = [];
+      const prio = state.sensorTypes.filter(t => typePriority(t.id) !== 3).map(t => `${t.name} ${typePriority(t.id)}`);
+      if (prio.length) parts.push(`우선순위 ${prio.join(', ')}`);
+      const consec = state.sensorTypes.filter(t => typeMaxConsecutive(t.id)).map(t => `${t.name} ${typeMaxConsecutive(t.id)}회`);
+      if (consec.length) parts.push(`연속 ${consec.join(', ')}`);
+      const av = [];
+      if (r.avoid.holidays) av.push('공휴일');
+      if (r.avoid.weekdays.length) av.push([...r.avoid.weekdays].sort().map(d => AUTO_WEEKDAY_NAMES[d]).join(''));
+      if (r.avoid.ranges.length) av.push(`기간 ${r.avoid.ranges.length}개`);
+      if (av.length) parts.push(`회피 ${av.join('·')}`);
+      return parts.length ? `— ${parts.join(' / ')}` : '— 기본값';
+    }
+    function renderAutoRuleDetails() {
+      const r = autoPlanRules();
+      document.getElementById('planAutoTypeRules').innerHTML = state.sensorTypes.map(t => `
+        <div class="auto-type-rule">
+          <span class="plan-dot" style="background:${sensorTypeColor(t)};"></span>
+          <span class="auto-type-name">${escapeHtml(t.name)}</span>
+          <select data-prio-type="${escapeAttr(t.id)}" aria-label="${escapeAttr(t.name)} 우선순위">
+            ${[5, 4, 3, 2, 1].map(v => `<option value="${v}"${typePriority(t.id) === v ? ' selected' : ''}>${AUTO_PRIORITY_LABELS[v]}</option>`).join('')}
+          </select>
+          <label style="display:inline-flex; align-items:center; gap:4px;">연속
+            <input type="number" min="0" max="9" step="1" data-consec-type="${escapeAttr(t.id)}" value="${typeMaxConsecutive(t.id)}" />회</label>
+        </div>`).join('');
+      document.getElementById('avoidHolidays').checked = r.avoid.holidays;
+      document.getElementById('avoidWeekdays').innerHTML = AUTO_WEEKDAY_NAMES.map((n, i) => `
+        <label style="display:inline-flex; align-items:center; gap:2px; cursor:pointer;"><input type="checkbox" data-avoid-dow="${i}" ${r.avoid.weekdays.includes(i) ? 'checked' : ''} style="width:14px; height:14px;" />${n}</label>`).join('');
+      document.getElementById('avoidMaxPull').value = String(r.avoid.maxPull);
+      document.getElementById('avoidRangeList').innerHTML = r.avoid.ranges.length
+        ? r.avoid.ranges.map((x, i) => `<div class="stack" style="gap:6px; align-items:center;">· ${x.from} ~ ${x.to}${x.name ? ` ${escapeHtml(x.name)}` : ''}
+            <button type="button" class="btn small danger" data-avoid-range-del="${i}">삭제</button></div>`).join('')
+        : '<span style="color:var(--muted);">등록된 회피 기간이 없습니다.</span>';
+      document.getElementById('planAutoRulesSummary').textContent = autoRulesSummaryText();
+    }
+    function autoRulesChanged() {
+      saveState();
+      renderAutoRuleDetails();
+      applyAutoMode();
+    }
+    document.getElementById('planAutoRules').addEventListener('change', (e) => {
+      const r = autoPlanRules(), t = e.target;
+      if (t.dataset.prioType) {
+        r.typePriority[t.dataset.prioType] = Number(t.value);
+      } else if (t.dataset.consecType) {
+        const v = Math.max(0, Math.min(9, Math.round(Number(t.value) || 0)));
+        if (v) r.maxConsecutive[t.dataset.consecType] = v; else delete r.maxConsecutive[t.dataset.consecType];
+      } else if (t.id === 'avoidHolidays') {
+        r.avoid.holidays = t.checked;
+      } else if (t.dataset.avoidDow != null) {
+        const d = Number(t.dataset.avoidDow);
+        r.avoid.weekdays = t.checked ? [...new Set([...r.avoid.weekdays, d])] : r.avoid.weekdays.filter(x => x !== d);
+      } else if (t.id === 'avoidMaxPull') {
+        r.avoid.maxPull = Number(t.value) || 2;
+      } else return;
+      autoRulesChanged();
+    });
+    document.getElementById('planAutoRules').addEventListener('click', (e) => {
+      const r = autoPlanRules();
+      if (e.target.id === 'avoidRangeAdd') {
+        const from = document.getElementById('avoidRangeFrom').value, to = document.getElementById('avoidRangeTo').value;
+        const name = document.getElementById('avoidRangeName').value.trim();
+        if (!from || !to) { alert('회피 기간의 시작일과 종료일을 입력해주세요.'); return; }
+        if (to < from) { alert('종료일이 시작일보다 빠릅니다.'); return; }
+        r.avoid.ranges.push({ from, to, name });
+        r.avoid.ranges.sort((a, b) => a.from.localeCompare(b.from));
+        ['avoidRangeFrom', 'avoidRangeTo', 'avoidRangeName'].forEach(id => { document.getElementById(id).value = ''; });
+        autoRulesChanged();
+        return;
+      }
+      const del = e.target.closest('button[data-avoid-range-del]');
+      if (del) {
+        r.avoid.ranges.splice(Number(del.dataset.avoidRangeDel), 1);
+        autoRulesChanged();
+      }
+    });
+
+    // 자동 계획에서 제외한 센서 목록(사유·보류 기한 편집, 다시 포함)과 그대로 두는 계획 안내
+    function renderAutoExcluded() {
+      const box = document.getElementById('planAutoExcluded');
+      const today = todayISO();
+      const excluded = state.inventory.filter(it => !it.openedAt && !it.archived && isAutoExcluded(it, today))
+        .sort(comparePlanPriority);
+      const pinned = state.plans.filter(p => p.pinned && planEndDate(p) > today).length;
+      const exclPlans = state.plans.filter(p => !p.pinned && planEndDate(p) > today && isAutoExcluded(state.inventory.find(x => x.id === p.invId), today)).length;
+      const notes = [];
+      if (pinned) notes.push(`고정한 계획 ${pinned}건`);
+      if (exclPlans) notes.push(`제외 센서의 계획 ${exclPlans}건`);
+      const noteHtml = notes.length
+        ? `<div class="mini" style="color:var(--primary); margin-bottom:6px;">📌 ${notes.join(', ')}은(는) 움직이지 않고 그 앞뒤를 채웁니다. 다음 계획 시작 전에 다 못 쓰는 센서는 그 날 조기 교체로 제안합니다.</div>`
+        : '';
+      if (!excluded.length) { box.innerHTML = noteHtml; return; }
+      box.innerHTML = noteHtml + `
+        <details class="auto-rules" open>
+          <summary class="mini"><strong>자동 계획에서 제외한 센서 ${excluded.length}개</strong> <span style="color:var(--muted);">— 보류 기한이 지나면 다시 포함</span></summary>
+          <div class="list" style="gap:6px; margin-top:6px;">
+            ${excluded.map(it => {
+              const type = sensorTypeById(it.typeId);
+              return `
+                <div class="item" style="padding:6px 8px; border-left:4px solid ${sensorTypeColor(type)};">
+                  <div class="stack" style="justify-content:space-between; align-items:center; flex-wrap:nowrap; gap:8px;">
+                    <div class="name" style="font-size:13px;">${escapeHtml(type?.name || '-')}${it.serial ? ` · S/N ${escapeHtml(it.serial)}` : ''} <span class="meta">유효기간 ${fmtDate(it.expiry) || '-'}</span></div>
+                    <button type="button" class="btn small" data-excl-remove="${escapeAttr(it.id)}">다시 포함</button>
+                  </div>
+                  <div class="stack mini" style="gap:6px; align-items:center; margin-top:4px;">
+                    <input data-excl-reason="${escapeAttr(it.id)}" value="${escapeAttr(it.autoExclude.reason || '')}" placeholder="사유 (예: 예비용, 반품 예정)" style="flex:1; min-width:140px; font-size:12px; padding:4px 6px;" />
+                    <label style="display:inline-flex; align-items:center; gap:4px;">보류 기한
+                      <input type="date" data-excl-until="${escapeAttr(it.id)}" value="${escapeAttr(it.autoExclude.until || '')}" style="width:auto; font-size:12px; padding:4px 6px;" /></label>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+        </details>`;
+    }
+    function setAutoExclude(invId, on) {
+      const item = state.inventory.find(x => x.id === invId);
+      if (!item) return;
+      if (on) item.autoExclude = { reason: '', until: '', at: todayISO() };
+      else delete item.autoExclude;
+      saveState();
+      rerender();
+      applyAutoMode();
+      const name = sensorTypeById(item.typeId)?.name || '-';
+      showToast(on ? `${name}${item.serial ? ` (S/N ${item.serial})` : ''}을(를) 자동 계획에서 제외했습니다.` : `${name}을(를) 다시 자동 계획에 포함했습니다.`);
+    }
+    els.planAutoList.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-exclude-inv]');
+      if (!btn) return;
+      e.preventDefault();
+      setAutoExclude(btn.dataset.excludeInv, true);
+    });
+    document.getElementById('planAutoExcluded').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-excl-remove]');
+      if (btn) setAutoExclude(btn.dataset.exclRemove, false);
+    });
+    document.getElementById('planAutoExcluded').addEventListener('change', (e) => {
+      const t = e.target;
+      const id = t.dataset.exclReason || t.dataset.exclUntil;
+      const item = id && state.inventory.find(x => x.id === id);
+      if (!item || !item.autoExclude) return;
+      if (t.dataset.exclReason) { item.autoExclude.reason = t.value.trim(); saveState(); return; }
+      item.autoExclude.until = t.value || '';
+      saveState();
+      rerender();
+      applyAutoMode();
+    });
+
     function openAutoPlanPanel() {
       closePlanPanelsExcept('auto');
       renderAutoRuleControls();
+      renderAutoRuleDetails();
       els.planAutoIncludePlanned.checked = false;
       els.planAutoMode.value = 'expiry';
       els.planAutoStart.value = '';        // 기본 시작일을 다시 채운다
@@ -4220,7 +4577,7 @@
         const gapDays = expiry && !overEnd ? daysBetween(end, expiry) : null;
         const duringExp = expiryDuringUse(p);
         const gapHtml = p.partialEnd
-          ? `<span style="color:#7c3aed; font-size:11px;">부분 착용 — 유효기간 종료일(${p.partialEnd})에 사용 중 종료, ${daysBetween(p.startDate, p.partialEnd)}일만 착용</span>`
+          ? `<span style="color:#7c3aed; font-size:11px;">${isExpiryPartial(p) ? '부분 착용' : '조기 교체'} — ${escapeHtml(partialEndText(p))}</span>`
           : duringExp
           ? `<span style="color:#7c3aed; font-size:11px;">⚠ 사용 중 유효기간(${duringExp}) 도래 — ${grace ? `이후 종료일(${end})까지 사용 가능` : `이후 사용 불가, ${daysBetween(p.startDate, duringExp)}일만 착용 가능(옵션 ④로 적용하면 종료일이 유효기간으로 바뀜)`}</span>`
           : overEnd
@@ -4253,11 +4610,12 @@
           <div class="plan-list-item${warnClass}" data-plan-id="${escapeAttr(p.id)}">
             <span class="plan-dot" style="background:${color};"></span>
             <div style="flex:1;">
-              <div style="font-weight:700;">${escapeHtml(type?.name || '-')}</div>
+              <div style="font-weight:700;">${escapeHtml(type?.name || '-')}${p.pinned ? ' <span class="badge plan-pin-badge" title="자동 계획 제안과 함께 밀기에서 움직이지 않는 계획">📌 고정</span>' : ''}${isAutoExcluded(item) ? ' <span class="badge plan-excl-badge" title="자동 계획에서 제외한 센서 — 자동 배치가 이 계획을 움직이지 않습니다">자동 제외</span>' : ''}</div>
               <div class="meta">${p.startDate} ~ ${end} ${gapHtml}</div>
               <div class="meta">${item?.serial ? `S/N ${escapeHtml(item.serial)}` : '일련번호 없음'} · 유효기간 ${fmtDate(item?.expiry)}</div>
             </div>
             <div class="stack" style="flex-wrap:nowrap;">
+              <button class="btn small plan-pin-btn${p.pinned ? ' active' : ''}" data-pin-plan="${escapeAttr(p.id)}" title="${p.pinned ? '고정 해제' : '고정 — 자동 계획 제안과 함께 밀기에서 이 계획을 움직이지 않습니다'}" aria-pressed="${p.pinned ? 'true' : 'false'}">📌</button>
               <button class="btn small" data-edit-plan="${escapeAttr(p.id)}">수정</button>
               <button class="btn small danger" data-del-plan="${escapeAttr(p.id)}">삭제</button>
             </div>
@@ -4338,12 +4696,12 @@
           const duringExp = expiryDuringUse(p);
           const warnClass = p.partialEnd || duringExp ? ' partial' : (overEnd ? (grace ? ' expiry-risk' : ' expiry-warn') : '');
           const isStart = dateStr === p.startDate;
-          const label = isStart ? (type?.name || '-') : ((p.partialEnd && dateStr === end) || (duringExp && dateStr === duringExp) ? '유효기간 끝' : '');
+          const label = isStart ? `${p.pinned ? '📌' : ''}${type?.name || '-'}` : (p.partialEnd && dateStr === end ? partialShortLabel(p) : (duringExp && dateStr === duringExp ? '유효기간 끝' : ''));
           const opacity = isStart ? '1' : '0.7';
           const inUseExtra = p._inUse ? `outline:1px solid ${color};outline-offset:-1px;` : '';
           const styleAttr = `background:${color};opacity:${opacity};${inUseExtra}`;
           const inUseLabel = p._inUse ? (p._archived ? ' [폐기]' : (p._ended ? ' [종료 처리 필요]' : ' [사용중]')) : '';
-          const titleAttr = escapeAttr(`${type?.name || '-'}${inUseLabel} ${p.startDate}~${end}${p.partialEnd ? ' ⚠부분 착용 — 유효기간 종료일에 사용 중 종료' : duringExp ? ` ⚠사용 중 유효기간(${duringExp}) 도래` : (overEnd ? (grace ? ' ⚠유효기간 초과위험' : ' ⚠유효기간 초과') : '')}`);
+          const titleAttr = escapeAttr(`${p.pinned ? '📌고정 ' : ''}${type?.name || '-'}${inUseLabel} ${p.startDate}~${end}${p.partialEnd ? ` ⚠${partialEndText(p)}` : duringExp ? ` ⚠사용 중 유효기간(${duringExp}) 도래` : (overEnd ? (grace ? ' ⚠유효기간 초과위험' : ' ⚠유효기간 초과') : '')}`);
           const draggable = p._inUse ? '' : 'draggable="true"';
           return `<span class="plan-bar${warnClass}" style="${styleAttr}" title="${titleAttr}" data-plan-bar="${escapeAttr(p.id)}" ${draggable}>${escapeHtml(label)}</span>`;
         }).join('');
@@ -4522,11 +4880,11 @@
       return `${name}${m.item.serial ? ` (S/N ${m.item.serial})` : ''}: 유효기간 ${m.item.expiry}, 시작 가능한 마지막 날 ${m.last}인데 ${startDate}에 시작해 ${-m.margin}일 늦습니다.`;
     }
     function latePlanIds() {
-      return new Set(state.plans.filter(p => { if (p.partialEnd) return false; const m = planExpiryMargin(p.typeId, p.startDate, p.invId); return m && m.margin < 0; }).map(p => p.id));
+      return new Set(state.plans.filter(p => { if (isExpiryPartial(p)) return false; const m = planExpiryMargin(p.typeId, p.startDate, p.invId); return m && m.margin < 0; }).map(p => p.id));
     }
     // 이동·수정 뒤 새로 규칙을 어기게 된 계획이 있으면 확인을 받는다. 취소하면 false (호출 쪽에서 되돌림)
     function confirmNewLatePlans(lateBefore) {
-      const added = state.plans.filter(p => !p.partialEnd && !lateBefore.has(p.id) && expiryLateMessage(p.typeId, p.startDate, p.invId));
+      const added = state.plans.filter(p => !isExpiryPartial(p) && !lateBefore.has(p.id) && expiryLateMessage(p.typeId, p.startDate, p.invId));
       if (!added.length) return true;
       const lines = added.slice(0, 5).map(p => `· ${expiryLateMessage(p.typeId, p.startDate, p.invId)}`).join('\n');
       return confirm(`유효기간 규칙상 사용할 수 없는 계획이 ${added.length}건 생깁니다.\n${lines}${added.length > 5 ? `\n… 외 ${added.length - 5}건` : ''}\n\n그래도 저장할까요?`);
@@ -4601,11 +4959,12 @@
       let added = 0, moved = 0;
       checked.forEach(p => {
         const existing = p.planId ? state.plans.find(x => x.id === p.planId) : null;
-        const lossApply = els.planAutoMode.value === 'loss';
         if (existing) {
           const changed = existing.startDate !== p.startDate;
           if (changed) { existing.startDate = p.startDate; moved++; }
-          if (changed || lossApply) { if (p.partialEnd) existing.partialEnd = p.partialEnd; else delete existing.partialEnd; }
+          // 제안이 정한 종료(부분 착용·조기 교체)를 그대로 반영한다
+          if (p.partialEnd) { existing.partialEnd = p.partialEnd; existing.partialReason = p.partialReason || 'expiry'; }
+          else { delete existing.partialEnd; delete existing.partialReason; }
           return;
         }
         state.plans.push({
@@ -4613,7 +4972,7 @@
           invId: p.invId,
           typeId: p.typeId,
           startDate: p.startDate,
-          ...(p.partialEnd ? { partialEnd: p.partialEnd } : {}),
+          ...(p.partialEnd ? { partialEnd: p.partialEnd, partialReason: p.partialReason || 'expiry' } : {}),
           createdAt: new Date().toISOString()
         });
         added++;
@@ -4743,6 +5102,18 @@
       const editBtn = e.target.closest('button[data-edit-plan]');
       if (editBtn) { openPlanEdit(editBtn.dataset.editPlan); return; }
 
+      const pinBtn = e.target.closest('button[data-pin-plan]');
+      if (pinBtn) {
+        const plan = state.plans.find(p => p.id === pinBtn.dataset.pinPlan);
+        if (!plan) return;
+        if (plan.pinned) delete plan.pinned; else plan.pinned = true;
+        saveState();
+        rerender();
+        if (els.planAutoPanel.style.display !== 'none') applyAutoMode();
+        showToast(plan.pinned ? `${plan.startDate} 계획을 고정했습니다. 자동 계획 제안과 함께 밀기에서 움직이지 않습니다.` : '고정을 해제했습니다.');
+        return;
+      }
+
       const delBtn = e.target.closest('button[data-del-plan]');
       if (!delBtn) return;
       const planId = delBtn.dataset.delPlan;
@@ -4774,7 +5145,7 @@
       const lateBefore = latePlanIds();
       if (els.planEditShiftToggle.checked) {
         // 이 계획 포함, 이후 계획(종류 무관) 모두 밀기
-        shiftPlansAfter(plan.startDate, delta, null);
+        shiftPlansAfter(plan.startDate, delta, null, plan.id);
         const movedPlan = state.plans.find(p => p.id === planEditingPlanId);
         if (movedPlan) {
           const movedEnd = planEndDate(movedPlan);
@@ -4782,8 +5153,7 @@
           if (overlapAfterShift.length) {
             const names = overlapAfterShift.map(p => `${p.startDate}~${planEndDate(p)}`).join(', ');
             if (!confirm(`이동 후 같은 종류 계획과 2일 이상 겹칩니다.\n겹치는 구간: ${names}\n계속 저장할까요?`)) {
-              // 롤백
-              shiftPlansAfter(movedPlan.startDate, -delta, null);
+              state.plans = snapshot; // 롤백
               return;
             }
           }
@@ -4798,6 +5168,7 @@
         }
         plan.startDate = newStart;
         delete plan.partialEnd;
+        delete plan.partialReason;
       }
       if (!confirmNewLatePlans(lateBefore)) { state.plans = snapshot; return; }
       saveState();
@@ -4995,7 +5366,7 @@
         const delta = daysBetween(plan.startDate, newStart);
         const snapshot = state.plans.map(p => ({ ...p }));
         const lateBefore = latePlanIds();
-        shiftPlansAfter(plan.startDate, delta, null);
+        shiftPlansAfter(plan.startDate, delta, null, plan.id);
         if (!confirmNewLatePlans(lateBefore)) { state.plans = snapshot; rerender(); return; }
         saveState();
         rerender();
@@ -5717,7 +6088,7 @@
           if (withSerial) row.push(it.serial || '');
           // 여유일수 = 시작 가능한 마지막 날 − 시작일 (음수면 유효기간 규칙 위반)
           row.push(p.startDate, planEndDate(p), type?.wearDays ?? '', it.expiry || '',
-            m ? m.margin : '', p.partialEnd ? '부분 착용' : (m && m.margin < 0 ? '유효기간 초과' : '정상'));
+            m ? m.margin : '', p.partialEnd ? (isExpiryPartial(p) ? '부분 착용' : '조기 교체') : (m && m.margin < 0 ? '유효기간 초과' : '정상'));
           return row;
         });
     }
